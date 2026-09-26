@@ -58,6 +58,10 @@ pub enum DataKey {
     /// Bitmask of campaign goal milestones (25 %, 50 %, 75 %, 100 %) that
     /// have been reached so far, keyed by campaign ID (persistent storage).
     MilestonesReached(u64),
+    /// Verified tree count aggregate for campaign reward eligibility.
+    VerifiedTreeCount(u64),
+    /// Bitmask of one-time tree reward unlocks (1k, 5k, 10k).
+    RewardsUnlocked(u64),
     /// Reserve pool balance for tree replacement, keyed by campaign ID
     /// (persistent storage). Holds 10% of raised funds for dead tree replacement.
     Reserve(u64),
@@ -257,6 +261,28 @@ pub struct TreePlantingVerifiedEvent {
     pub campaign_id: u64,
     pub planting_id: u64,
     pub verified_at: u64,
+}
+
+/// Entitlement unlocked by a campaign's verified tree count.
+#[contracttype]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum RewardTier {
+    /// Unlocked at 1,000 verified trees.
+    CustomBranding,
+    /// Unlocked at 5,000 verified trees.
+    WhiteLabel,
+    /// Unlocked at 10,000 verified trees.
+    ApiAccess,
+}
+
+/// Emitted once when a campaign crosses a verified-tree reward threshold.
+#[contractevent(topics = ["RewardUnlocked"])]
+#[derive(Clone)]
+pub struct RewardUnlockedEvent {
+    pub campaign_id: u64,
+    pub tier: RewardTier,
+    pub threshold: u64,
+    pub verified_tree_count: u64,
 }
 
 /// Emitted when SLA verification refund is issued for unverified tree planting.
@@ -1580,6 +1606,7 @@ impl CampaignFundingContract {
         record.verified_at = env.ledger().timestamp();
 
         env.storage().persistent().set(&key, &record);
+        Self::update_tree_rewards(&env, campaign_id, record.tree_count);
 
         env.events().publish(
             ("TreePlantingVerified", campaign_id),
@@ -1646,6 +1673,23 @@ impl CampaignFundingContract {
             .unwrap_or_else(|| panic_with_error!(&env, Error::PlantingNotFound))
     }
 
+    /// Return the number of trees in verified planting batches for a campaign.
+    pub fn get_verified_tree_count(env: Env, campaign_id: u64) -> u64 {
+        let _ = Self::load_campaign(&env, campaign_id);
+        env.storage().persistent().get(&DataKey::VerifiedTreeCount(campaign_id)).unwrap_or(0)
+    }
+
+    /// Return the service reward tiers unlocked by verified trees.
+    pub fn get_rewards_unlocked(env: Env, campaign_id: u64) -> Vec<RewardTier> {
+        let _ = Self::load_campaign(&env, campaign_id);
+        let mask: u32 = env.storage().persistent().get(&DataKey::RewardsUnlocked(campaign_id)).unwrap_or(0);
+        let mut tiers = Vec::new(&env);
+        if mask & 1 != 0 { tiers.push_back(RewardTier::CustomBranding); }
+        if mask & 2 != 0 { tiers.push_back(RewardTier::WhiteLabel); }
+        if mask & 4 != 0 { tiers.push_back(RewardTier::ApiAccess); }
+        tiers
+    }
+
     // -----------------------------------------------------------------------
     // Private helpers
     // -----------------------------------------------------------------------
@@ -1706,6 +1750,34 @@ impl CampaignFundingContract {
         env.storage()
             .instance()
             .extend_ttl(LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+
+    fn update_tree_rewards(env: &Env, campaign_id: u64, batch_count: u32) {
+        let count_key = DataKey::VerifiedTreeCount(campaign_id);
+        let previous: u64 = env.storage().persistent().get(&count_key).unwrap_or(0);
+        let count = previous.checked_add(batch_count as u64)
+            .unwrap_or_else(|| panic_with_error!(env, Error::ArithmeticOverflow));
+        env.storage().persistent().set(&count_key, &count);
+        env.storage().persistent().extend_ttl(&count_key, LEDGER_THRESHOLD, LEDGER_BUMP);
+
+        let reward_key = DataKey::RewardsUnlocked(campaign_id);
+        let mut mask: u32 = env.storage().persistent().get(&reward_key).unwrap_or(0);
+        let rewards = [
+            (1u32, 1_000u64, RewardTier::CustomBranding),
+            (2u32, 5_000u64, RewardTier::WhiteLabel),
+            (4u32, 10_000u64, RewardTier::ApiAccess),
+        ];
+        for (bit, threshold, tier) in rewards.iter() {
+            if mask & bit == 0 && count >= *threshold {
+                mask |= *bit;
+                env.events().publish(
+                    ("RewardUnlocked", campaign_id),
+                    RewardUnlockedEvent { campaign_id, tier: *tier, threshold: *threshold, verified_tree_count: count },
+                );
+            }
+        }
+        env.storage().persistent().set(&reward_key, &mask);
+        env.storage().persistent().extend_ttl(&reward_key, LEDGER_THRESHOLD, LEDGER_BUMP);
     }
 
     /// Emit [`MilestoneReachedEvent`]s for every goal threshold newly crossed
