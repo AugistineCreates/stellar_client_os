@@ -34,6 +34,11 @@ export async function POST(request: Request) {
       language?: string;
       translations?: Record<string, string>;
       autoTranslate?: boolean;
+      nonprofitPartner?: {
+        legalName?: unknown;
+        registrationNumber?: unknown;
+        country?: unknown;
+      };
     };
     if (!body.creator || !body.name || !body.goalAmount) {
       return Response.json({ error: "creator, name, and goalAmount are required" }, { status: 400 });
@@ -46,6 +51,26 @@ export async function POST(request: Request) {
     }
     if (body.durationMs !== undefined && (!Number.isFinite(body.durationMs) || body.durationMs < 0)) {
       return Response.json({ error: "durationMs must be a non-negative number" }, { status: 400 });
+    }
+    let nonprofitPartner: { legalName: string; registrationNumber: string; country: string } | undefined;
+    if (body.nonprofitPartner !== undefined) {
+      const partner = body.nonprofitPartner;
+      if (
+        !partner ||
+        typeof partner.legalName !== "string" || !partner.legalName.trim() ||
+        typeof partner.registrationNumber !== "string" || !partner.registrationNumber.trim() ||
+        typeof partner.country !== "string" || !partner.country.trim()
+      ) {
+        return Response.json(
+          { error: "nonprofitPartner must include legalName, registrationNumber, and country" },
+          { status: 400 },
+        );
+      }
+      nonprofitPartner = {
+        legalName: partner.legalName.trim(),
+        registrationNumber: partner.registrationNumber.trim(),
+        country: partner.country.trim(),
+      };
     }
     if (body.deadline !== undefined && !Number.isFinite(body.deadline)) {
       return Response.json({ error: "deadline must be a numeric timestamp" }, { status: 400 });
@@ -87,6 +112,7 @@ export async function POST(request: Request) {
       durationMs,
       goalAmount: body.goalAmount,
       network: body.network,
+      nonprofitPartner,
       language,
       translations,
     });
