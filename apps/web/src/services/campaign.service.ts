@@ -514,6 +514,8 @@ export async function createCampaign(input: {
   creatorEmail?: string;
   name: string;
   description?: string;
+  language?: string;
+  translations?: Record<string, string>;
   location?: string;
   durationMs?: number;
   deadline?: number;
@@ -526,8 +528,8 @@ export async function createCampaign(input: {
     creatorEmail: input.creatorEmail,
     name: input.name,
     description: input.description,
-    language: detectCampaignLanguage(input.description),
-    translations: {},
+    language: input.language ?? detectCampaignLanguage(input.description),
+    translations: input.translations ?? {},
     location: input.location,
     durationMs: input.deadline !== undefined ? input.deadline - now : input.durationMs,
     status: "DRAFT",

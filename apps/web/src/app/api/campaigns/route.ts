@@ -25,6 +25,7 @@ async function postCampaign(request: Request) {
   try {
     const body = await request.json() as {
       creator?: string;
+      creatorEmail?: string;
       name?: string;
       description?: string;
       location?: string;

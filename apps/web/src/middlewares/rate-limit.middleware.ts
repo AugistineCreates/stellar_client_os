@@ -132,9 +132,10 @@ export function withRateLimit(
 type CampaignRouteHandler = (req: Request, ...args: any[]) => Promise<Response> | Response;
 export function withCampaignApiRateLimit(handler: CampaignRouteHandler): CampaignRouteHandler {
   const redis = getRedisClient();
-  return async (req: NextRequest, ...args: any[]): Promise<Response> => {
+  return async (req: Request, ...args: any[]): Promise<Response> => {
+    const nextReq = req as NextRequest;
     const { identity, tier } = extractCampaignApiIdentity(req);
-    if (getSkipIps().has(extractIp(req))) return handler(req, ...args);
+    if (getSkipIps().has(extractIp(nextReq))) return handler(req, ...args);
     const result = await new RateLimiter(redis, { limit: tier.hourlyLimit, windowMs: tier.windowMs, keyPrefix: "rl:campaign-api" }).check(identity);
     const headers = buildRateLimitHeaders(result);
     if (!result.allowed) return NextResponse.json({ error: "Too many requests", code: "RATE_LIMIT_EXCEEDED", tier: tier.id, retryAfter: headers["Retry-After"] }, { status: 429, headers });
