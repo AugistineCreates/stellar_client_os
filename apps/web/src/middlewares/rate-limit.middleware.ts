@@ -36,6 +36,7 @@ import {
   RateLimiter,
   createRateLimiter,
   buildRateLimitHeaders,
+  resolveCampaignApiTier,
   type RateLimitOptions,
 } from "@/lib/rate-limit";
 
@@ -53,6 +54,13 @@ export function extractIp(req: NextRequest): string {
   const ip = (req as unknown as { ip?: string }).ip;
   if (ip) return ip;
   return "anonymous";
+}
+
+export function extractCampaignApiIdentity(req: Request): { identity: string; tier: ReturnType<typeof resolveCampaignApiTier> } {
+  const apiKey = req.headers.get("x-api-key") ?? req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  const tier = resolveCampaignApiTier(apiKey);
+  if (apiKey) return { identity: `${tier.id}:key:${apiKey.slice(-16)}`, tier };
+  return { identity: `${tier.id}:ip:${extractIp(req as NextRequest)}`, tier };
 }
 
 // ── Skip list ─────────────────────────────────────────────────────────────────
@@ -118,6 +126,19 @@ export function withRateLimit(
     const limited = await checkRateLimit(req, limiter);
     if (limited) return limited;
     return handler(req);
+  };
+}
+
+type CampaignRouteHandler = (req: Request, ...args: any[]) => Promise<Response> | Response;
+export function withCampaignApiRateLimit(handler: CampaignRouteHandler): CampaignRouteHandler {
+  const redis = getRedisClient();
+  return async (req: NextRequest, ...args: any[]): Promise<Response> => {
+    const { identity, tier } = extractCampaignApiIdentity(req);
+    if (getSkipIps().has(extractIp(req))) return handler(req, ...args);
+    const result = await new RateLimiter(redis, { limit: tier.hourlyLimit, windowMs: tier.windowMs, keyPrefix: "rl:campaign-api" }).check(identity);
+    const headers = buildRateLimitHeaders(result);
+    if (!result.allowed) return NextResponse.json({ error: "Too many requests", code: "RATE_LIMIT_EXCEEDED", tier: tier.id, retryAfter: headers["Retry-After"] }, { status: 429, headers });
+    return handler(req, ...args);
   };
 }
 
