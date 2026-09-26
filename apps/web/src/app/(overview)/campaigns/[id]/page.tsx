@@ -8,19 +8,28 @@ import {
   Heart,
   Users,
   Target,
-  Calendar,
-  Share2,
   Edit,
   ShieldCheck,
+  MessageSquare,
+  Trophy,
+  BarChart3,
   Globe,
   AlertTriangle,
+  Crown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CampaignSponsorWall } from "@/components/modules/campaign/sponsor-wall/CampaignSponsorWall";
 import { CampaignCollaboration } from "@/components/modules/campaign/collaboration/CampaignCollaboration";
+import { CampaignMilestones } from "@/components/modules/campaign/CampaignMilestones";
+import { CampaignQAModeration } from "@/components/modules/campaign/qa/CampaignQAModeration";
+import { CampaignSeries } from "@/components/modules/campaign/series/CampaignSeries";
+import { CampaignAnalyticsDashboard } from "@/components/modules/campaign/analytics/CampaignAnalyticsDashboard";
 import { BackerCommunity } from "@/components/modules/campaign/community/BackerCommunity";
+import { TopBackers } from "@/components/modules/campaign/backers/TopBackers";
+import { TOP_BACKERS_LIMIT } from "@/types/campaign-backers";
+import { CampaignFundingVelocityChart } from "@/components/modules/campaign/FundingVelocityChart";
 
 const translations = {
   es: {
@@ -90,14 +99,37 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
     impactStatement: "Permanently offset 150 metric tons of CO2 while securing habitat for 200+ endangered species.",
     beneficiaries: "5,000 local indigenous community members",
     co2OffsetTons: "150",
+    successStory: {
+      headline: "From Rainforest Pledge to On-the-Ground Impact",
+      creatorInterview: "Every XLM stream is tied to verifiable patrol hours and backers receive monthly GPS updates. The team shipped on every promise.",
+      backerTestimonials: [
+        { name: "Marta L.", location: "Lisbon, Portugal", quote: "I could see exactly where my contribution went." },
+        { name: "Devon K.", location: "Austin, TX", quote: "You can tell this is a team that ships." },
+        { name: "Priya N.", location: "Bengaluru, India", quote: "More campaigns should publish stories like this." },
+      ],
+    },
+    treesPlanted: "1,500",
   };
+
+  // The mock detail page renders as the campaign creator, so creator-only
+  // controls (featuring backers, managing community spaces) are exercised.
+  // Replace with the connected wallet address once wallet state is wired here.
+  const viewerAddress = campaign.creator;
+  const isCreatorView = viewerAddress === campaign.creator;
 
   const detectedLang = detectLanguage(campaign.title + campaign.shortDescription + campaign.fullStory);
   const detectedLanguageName = languageNames[detectedLang] ?? detectedLang;
   const [translationLang, setTranslationLang] = useState<TranslationKey | "">("");
   const translation = translationLang ? translations[translationLang] : null;
 
-  const progressPct = Math.min(100, Math.round((parseFloat(campaign.raisedAmount) / parseFloat(campaign.goalAmount)) * 100));
+  const progressPct = Math.min(
+    100,
+    Math.round(
+      (parseFloat(campaign.raisedAmount.replace(/,/g, "")) /
+        parseFloat(campaign.goalAmount.replace(/,/g, ""))) *
+        100
+    )
+  );
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl space-y-8">
@@ -132,7 +164,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
           <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-zinc-100">Submit Insurance Claim</h2>
-              <button onClick={() => setShowInsuranceModal(false)} className="text-zinc-400 hover:text-zinc-200 text-xl">×</button>
+              <button type="button" onClick={() => { setShowInsuranceModal(false); setClaimSubmitted(false); }} className="text-zinc-400 hover:text-zinc-200 text-xl">×</button>
             </div>
             {claimSubmitted ? (
               <div className="space-y-2">
@@ -158,7 +190,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                   />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setShowInsuranceModal(false)}>Cancel</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => { setShowInsuranceModal(false); setClaimSubmitted(false); }}>Cancel</Button>
                   <Button type="submit" size="sm" className="bg-amber-600 text-white hover:bg-amber-700">Submit Claim</Button>
                 </div>
               </form>
@@ -237,18 +269,39 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {/* Main Content Tabs (Overview, Sponsor Wall #724, Co-Creators #722) */}
+      {/* Funding Milestone Achievement Badges (25%, 50%, 75%, 100%) */}
+      <CampaignMilestones
+        raisedAmount={campaign.raisedAmount}
+        goalAmount={campaign.goalAmount}
+      />
+
+      {/* Main Content Tabs (Overview, Sponsor Wall #724, Top Backers, Co-Creators #722) */}
       {/* Backer community spaces (#788) render inside the overview sidebar. */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
-        <TabsList className="grid w-full grid-cols-3 bg-zinc-900 border border-zinc-800 p-1 rounded-xl">
+        <TabsList className="grid w-full grid-cols-2 gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1 md:grid-cols-4 xl:grid-cols-8">
           <TabsTrigger value="overview" className="text-xs font-semibold data-[state=active]:bg-purple-600 data-[state=active]:text-white">
             <Target className="mr-1.5 h-4 w-4" /> Overview & Story
           </TabsTrigger>
           <TabsTrigger value="sponsors" className="text-xs font-semibold data-[state=active]:bg-purple-600 data-[state=active]:text-white">
             <Heart className="mr-1.5 h-4 w-4 text-rose-400" /> Sponsor Wall (#724)
           </TabsTrigger>
+          <TabsTrigger value="backers" className="text-xs font-semibold data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+            <Crown className="mr-1.5 h-4 w-4 text-amber-400" /> Top Backers
+          </TabsTrigger>
           <TabsTrigger value="collaboration" className="text-xs font-semibold data-[state=active]:bg-purple-600 data-[state=active]:text-white">
             <Users className="mr-1.5 h-4 w-4 text-purple-400" /> Co-Creators (#722)
+          </TabsTrigger>
+          <TabsTrigger value="qa" className="text-xs font-semibold data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+            <MessageSquare className="mr-1.5 h-4 w-4 text-purple-400" /> Q&A (#791)
+          </TabsTrigger>
+          <TabsTrigger value="success" className="text-xs font-semibold data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+            <Trophy className="mr-1.5 h-4 w-4 text-amber-400" /> Success Story
+          </TabsTrigger>
+          <TabsTrigger value="series" className="text-xs font-semibold data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+            <Sparkles className="mr-1.5 h-4 w-4 text-amber-400" /> Series & Sequels
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="text-xs font-semibold data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+            <BarChart3 className="mr-1.5 h-4 w-4 text-emerald-400" /> Analytics
           </TabsTrigger>
         </TabsList>
 
@@ -274,7 +327,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                   lang={translationLang || detectedLang}
                   className="text-sm text-amber-200/90 italic bg-amber-950/20 p-4 rounded-lg border border-amber-900/30"
                 >
-                  "{translation?.impactStatement ?? campaign.impactStatement}"
+                  &ldquo;{translation?.impactStatement ?? campaign.impactStatement}&rdquo;
                 </p>
                 <div className="grid grid-cols-2 gap-4 text-xs pt-2">
                   <div>Beneficiaries: <strong className="text-zinc-100">{campaign.beneficiaries}</strong></div>
@@ -284,6 +337,19 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
             </div>
 
             <div className="space-y-4">
+              <CampaignFundingVelocityChart
+                data={[
+                  { label: "Mon", raised: 2600 },
+                  { label: "Tue", raised: 3000 },
+                  { label: "Wed", raised: 4200 },
+                  { label: "Thu", raised: 5800 },
+                  { label: "Fri", raised: 7300 },
+                  { label: "Sat", raised: 8100 },
+                  { label: "Sun", raised: 9600 },
+                ]}
+                currency="XLM"
+              />
+
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-3">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-purple-400">Campaign Timeline</h4>
                 <div className="text-xs space-y-2">
@@ -298,7 +364,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                 </div>
               </div>
 
-              <BackerCommunity campaignId={campaign.id} />
+              <BackerCommunity campaignId={campaign.id} canManage={isCreatorView} />
             </div>
           </div>
         </TabsContent>
@@ -308,65 +374,68 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
           <CampaignSponsorWall campaignId={campaign.id} campaignTitle={campaign.title} />
         </TabsContent>
 
-        {/* Tab 3: Co-Creators Collaboration (#722) */}
+        {/* Tab 3: Top backers by amount, with creator featuring + privacy */}
+        <TabsContent value="backers">
+          <TopBackers
+            campaignId={campaign.id}
+            campaignTitle={campaign.title}
+            creatorAddress={campaign.creator}
+            viewerAddress={viewerAddress}
+            limit={TOP_BACKERS_LIMIT}
+          />
+        </TabsContent>
+
+        {/* Tab 4: Co-Creators Collaboration (#722) */}
         <TabsContent value="collaboration">
           <CampaignCollaboration campaignId={campaign.id} campaignTitle={campaign.title} />
         </TabsContent>
-      </Tabs>
-      {showInsuranceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" /> Campaign Insurance Claim
-              </h3>
-              <button
-                type="button"
-                onClick={() => { setShowInsuranceModal(false); setClaimSubmitted(false); }}
-                className="text-xs font-semibold text-zinc-400 hover:text-zinc-200"
-              >
-                Close
-              </button>
+
+        {/* Tab 5: Q&A Moderation (#791) */}
+        <TabsContent value="qa">
+          <CampaignQAModeration campaignId={campaign.id} campaignTitle={campaign.title} />
+        </TabsContent>
+
+        {/* Tab 6: Success Story */}
+        <TabsContent value="success" className="space-y-6">
+          <div className="relative overflow-hidden rounded-2xl border border-emerald-800/60 bg-gradient-to-br from-emerald-950/40 via-zinc-900 to-zinc-900 p-6 md:p-8">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-emerald-600 text-white font-semibold text-xs">
+                <Trophy className="mr-1 h-3 w-3" /> Featured Success Story
+              </Badge>
             </div>
-            {claimSubmitted ? (
-              <p className="mt-4 text-sm text-emerald-400">Claim submitted successfully.</p>
-            ) : (
-              <form
-                className="mt-4 space-y-4"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setClaimSubmitted(true);
-                }}
-              >
-                <textarea
-                  required
-                  rows={4}
-                  placeholder="Describe how the campaign failed and upload proof below"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/40"
-                />
-                <input
-                  required
-                  type="file"
-                  className="w-full text-sm text-zinc-300 file:mr-3 file:rounded-md file:border-0 file:bg-amber-500/20 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-amber-300 hover:file:bg-amber-500/30"
-                />
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { setShowInsuranceModal(false); setClaimSubmitted(false); }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" size="sm" className="bg-amber-600 text-white hover:bg-amber-700">
-                    Submit Claim
-                  </Button>
-                </div>
-              </form>
-            )}
+            <h3 className="text-2xl font-extrabold text-zinc-50 mt-4">{campaign.successStory.headline}</h3>
+            <div className="mt-4 space-y-2 rounded-lg border border-zinc-800 bg-zinc-950/40 p-4">
+              <p className="text-xs font-bold uppercase tracking-wider text-purple-400">Creator Interview</p>
+              <p className="text-sm text-zinc-300 leading-relaxed">{campaign.successStory.creatorInterview}</p>
+            </div>
           </div>
-        </div>
-      )}
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4">
+            <h4 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+              <Users className="h-4 w-4 text-purple-400" /> Backer Testimonials
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {campaign.successStory.backerTestimonials.map((testimonial) => (
+                <figure key={testimonial.name} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <blockquote className="text-sm text-zinc-300 leading-relaxed">&ldquo;{testimonial.quote}&rdquo;</blockquote>
+                  <figcaption className="mt-3 text-xs text-zinc-400">
+                    <strong className="text-zinc-200">{testimonial.name}</strong> &middot; {testimonial.location}
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* Tab 7: Series & Sequels */}
+        <TabsContent value="series">
+          <CampaignSeries campaignId={campaign.id} campaignTitle={campaign.title} />
+        </TabsContent>
+
+        {/* Tab 8: Analytics for creators */}
+        <TabsContent value="analytics">
+          <CampaignAnalyticsDashboard campaignId={campaign.id} campaignTitle={campaign.title} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

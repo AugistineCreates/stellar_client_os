@@ -2,9 +2,10 @@
 
 import React from "react";
 import Link from "next/link";
-import { Rocket, Plus, Heart, Users, Sparkles, ShieldCheck, ChevronRight, Scale, ShoppingBag } from "lucide-react";
+import { Rocket, Plus, Heart, Users, ShieldCheck, ChevronRight, Trophy, Scale, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import SuccessStories from "@/components/modules/campaign/success-stories/SuccessStories";
 
 export default function CampaignsDirectoryPage() {
   const campaigns = [
@@ -48,7 +49,12 @@ export default function CampaignsDirectoryPage() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <Link href="/campaigns/create">
+          <Button className="bg-gradient-to-r from-purple-600 to-blue-600 font-semibold text-white hover-from-purple-700 hover-to-blue-700 shadow-lg shadow-purple-900/30">
+            <Plus className="mr-2 h-4 w-4" /> Create Campaign Wizard (#720)
+          </Button>
+        </Link>
+<div className="flex flex-wrap items-center gap-2">
           <Link href="/campaigns/compare">
             <Button variant="outline" className="border-purple-800 bg-purple-950/40 text-purple-300 hover:bg-purple-900/60 font-semibold text-xs">
               <Scale className="mr-1.5 h-3.5 w-3.5" /> Compare Tool (#778)
@@ -61,16 +67,25 @@ export default function CampaignsDirectoryPage() {
             </Button>
           </Link>
 
+          <Link href="/grants">
+            <Button variant="outline" className="border-amber-800 bg-amber-950/40 text-amber-300 hover:bg-amber-950/60 font-semibold shadow-lg text-xs">
+              <Trophy className="mr-1.5 h-3.5 w-3.5" /> Grant Programs
+            </Button>
+          </Link>
+
           <Link href="/campaigns/create">
             <Button className="bg-gradient-to-r from-purple-600 to-blue-600 font-semibold text-xs text-white hover:from-purple-700 hover:to-blue-700 shadow-lg shadow-purple-900/30">
-              <Plus className="mr-1.5 h-3.5 w-3.5" /> Create Campaign (#720)
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> Create Campaign Wizard (#720)
             </Button>
           </Link>
         </div>
       </div>
 
+      {/* Success Stories Section */}
+      <SuccessStories />
+
       {/* Campaigns Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md-grid-cols-2 gap-6">
         {campaigns.map((c) => {
           const progress = Math.round((parseFloat(c.raisedAmount.replace(/,/g, "")) / parseFloat(c.goalAmount.replace(/,/g, ""))) * 100);
           return (
@@ -121,7 +136,7 @@ export default function CampaignsDirectoryPage() {
                   </div>
 
                   <Link href={`/campaigns/${c.id}`}>
-                    <Button size="sm" variant="ghost" className="text-xs text-purple-400 hover:text-purple-300 hover:bg-purple-950/40">
+                    <Button size="sm" variant="ghost" className="text-xs text-purple-400 hover-text-purple-300 hover-bg-purple-950/40">
                       View Campaign <ChevronRight className="ml-1 h-3.5 w-3.5" />
                     </Button>
                   </Link>
