@@ -1,5 +1,6 @@
 import { MILESTONE_PERCENTAGES } from "../lib/campaign-milestones";
 import { EmailService, type SendEmailOptions } from "./email.service";
+import { CampaignWebhookService } from "./campaign-webhook.service";
 
 export type CampaignStatus = "DRAFT" | "PENDING_VERIFICATION" | "ACTIVE" | "PAUSED" | "COMPLETED" | "FAILED";
 
@@ -703,7 +704,20 @@ export async function transitionCampaignStatus(
       reason,
     }],
   };
-  return dataSource.saveCampaign(next);
+  const saved = await dataSource.saveCampaign(next);
+  if (toStatus === "COMPLETED") {
+    void new CampaignWebhookService().campaignCompleted({
+      completionId: `${campaign.id}:completed:${now}`,
+      campaignId: campaign.id,
+      completedAt: new Date(now).toISOString(),
+      treeCount: saved.treeCount,
+      raisedAmount: saved.raisedAmount,
+      goalAmount: saved.goalAmount,
+    }).catch((error) => {
+      console.error(`[Campaign webhook] Failed to dispatch completion for ${campaign.id}:`, error);
+    });
+  }
+  return saved;
 }
 
 export async function submitCampaignInsuranceClaim(

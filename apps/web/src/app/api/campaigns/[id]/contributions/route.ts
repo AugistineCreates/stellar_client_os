@@ -1,9 +1,9 @@
 import { recordCampaignContribution } from "@/services/campaign.service";
-import { WebhookService } from "@/services/webhook.service";
+import { CampaignWebhookService } from "@/services/campaign-webhook.service";
 
 export const runtime = "nodejs";
 
-const webhookService = new WebhookService();
+const webhookService = new CampaignWebhookService();
 
 export async function POST(
   request: Request,
@@ -40,7 +40,7 @@ async function dispatchMilestoneWebhooks(
 ): Promise<void> {
   for (const percentage of milestones) {
     try {
-      await webhookService.dispatchEvent("campaign.milestone_reached", {
+      await webhookService.campaignMilestoneReached({
         // Unique per (campaign, milestone) so idempotent delivery never
         // suppresses a later milestone of the same campaign.
         eventId: `${campaign.id}:${percentage}`,
