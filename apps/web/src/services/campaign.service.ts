@@ -15,6 +15,11 @@ export type CampaignSortField =
 
 export type SortDirection = "ASC" | "DESC";
 
+export interface CampaignCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface SponsorRecord {
   id: string;
   campaignId: string;
@@ -61,6 +66,10 @@ export interface CampaignVerificationSummary {
   emailVerified: boolean;
   phoneVerified: boolean;
   addressVerified: boolean;
+  /** Backwards-compatible aliases used by older API consumers. */
+  verifiedEmail?: boolean;
+  verifiedPhone?: boolean;
+  verifiedAddress?: boolean;
   badges: string[];
   status: CampaignVerificationStatus;
   isVerified: boolean;
@@ -128,6 +137,8 @@ export interface CampaignRecord {
   translations?: Record<string, string>;
   /** Geographic location of the campaign, used for duplicate detection. */
   location?: string;
+  /** GPS coordinates for the planting site, when supplied by the creator. */
+  coordinates?: CampaignCoordinates;
   /** Intended campaign duration in milliseconds, used for duplicate detection. */
   durationMs?: number;
   status: CampaignStatus;
@@ -515,20 +526,33 @@ export async function createCampaign(input: {
   name: string;
   description?: string;
   location?: string;
+  coordinates?: CampaignCoordinates;
   durationMs?: number;
   deadline?: number;
   goalAmount: string;
   network?: "testnet" | "mainnet";
+  language?: string;
+  translations?: Record<string, string>;
 }, dataSource = getCampaignDataSource(), now = Date.now()): Promise<CampaignRecord> {
+  if (input.coordinates !== undefined) {
+    const { latitude, longitude } = input.coordinates;
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+      throw new Error("coordinates.latitude must be between -90 and 90");
+    }
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      throw new Error("coordinates.longitude must be between -180 and 180");
+    }
+  }
   const campaign: CampaignRecord = {
     id: input.id ?? crypto.randomUUID(),
     creator: input.creator,
     creatorEmail: input.creatorEmail,
     name: input.name,
     description: input.description,
-    language: detectCampaignLanguage(input.description),
-    translations: {},
+    language: input.language ?? detectCampaignLanguage(input.description),
+    translations: input.translations ?? {},
     location: input.location,
+    coordinates: input.coordinates,
     durationMs: input.deadline !== undefined ? input.deadline - now : input.durationMs,
     status: "DRAFT",
     goalAmount: input.goalAmount,

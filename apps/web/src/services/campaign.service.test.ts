@@ -80,6 +80,23 @@ describe("campaign service", () => {
     expect(campaign.location).toBe("Kenya");
     expect(campaign.durationMs).toBe(100_000);
   });
+
+  it("persists valid planting-site coordinates and rejects invalid latitude", async () => {
+    const source = new InMemoryCampaignDataSource();
+    const campaign = await createCampaign({
+      creator: "creator-1",
+      name: "Global planting site",
+      goalAmount: "100",
+      coordinates: { latitude: -3.4653, longitude: -62.2159 },
+    }, source, 10_000);
+    expect(campaign.coordinates).toEqual({ latitude: -3.4653, longitude: -62.2159 });
+    await expect(createCampaign({
+      creator: "creator-1",
+      name: "Invalid site",
+      goalAmount: "100",
+      coordinates: { latitude: 91, longitude: 0 },
+    }, source, 10_000)).rejects.toThrow("latitude");
+  });
 });
 
 describe("findDuplicateCampaigns", () => {
