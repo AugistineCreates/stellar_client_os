@@ -6,34 +6,13 @@ import { Rocket, Plus, Heart, Users, ShieldCheck, ChevronRight, Trophy, Scale, S
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import SuccessStories from "@/components/modules/campaign/success-stories/SuccessStories";
+import { useCampaigns } from "@/hooks/use-campaigns";
+import { useCampaignWishlist } from "@/hooks/use-campaign-wishlist";
+import { CampaignCountdown } from "@/components/modules/campaign/campaign-countdown";
 
 export default function CampaignsDirectoryPage() {
-  const campaigns = [
-    {
-      id: "camp-101",
-      title: "Save the Amazon RainForest Reserve",
-      category: "Environmental & Reforestation",
-      raisedAmount: "33,850",
-      goalAmount: "50,000",
-      token: "XLM",
-      sponsorCount: 6,
-      collaboratorCount: 2,
-      status: "ACTIVE",
-      description: "Protecting 50,000 hectares of primary rainforest through community-led guardianship and carbon streaming.",
-    },
-    {
-      id: "camp-102",
-      title: "Clean Water Wells for Sub-Saharan Communities",
-      category: "Community & Social Impact",
-      raisedAmount: "18,200",
-      goalAmount: "25,000",
-      token: "USDC",
-      sponsorCount: 14,
-      collaboratorCount: 3,
-      status: "ACTIVE",
-      description: "Installing 12 solar-powered water filtration wells across rural farming villages.",
-    },
-  ];
+  const { campaigns } = useCampaigns();
+  const { toggleWishlist, isInWishlist } = useCampaignWishlist();
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl space-y-8">
@@ -50,7 +29,7 @@ export default function CampaignsDirectoryPage() {
         </div>
 
         <Link href="/campaigns/create">
-          <Button className="bg-gradient-to-r from-purple-600 to-blue-600 font-semibold text-white hover-from-purple-700 hover-to-blue-700 shadow-lg shadow-purple-900/30">
+          <Button className="bg-gradient-to-r from-purple-600 to-blue-600 font-semibold text-white hover:from-purple-700 hover:to-blue-700 shadow-lg shadow-purple-900/30">
             <Plus className="mr-2 h-4 w-4" /> Create Campaign Wizard (#720)
           </Button>
         </Link>
@@ -87,18 +66,34 @@ export default function CampaignsDirectoryPage() {
       {/* Campaigns Grid */}
       <div className="grid grid-cols-1 md-grid-cols-2 gap-6">
         {campaigns.map((c) => {
-          const progress = Math.round((parseFloat(c.raisedAmount.replace(/,/g, "")) / parseFloat(c.goalAmount.replace(/,/g, ""))) * 100);
+          const progress = Math.round((parseFloat(String(c.raisedAmount).replace(/,/g, "")) / parseFloat(String(c.goalAmount).replace(/,/g, ""))) * 100) || 0;
+          const wished = isInWishlist(c.id);
+          
           return (
             <div
               key={c.id}
-              className="group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 p-6 shadow-xl transition-all duration-300 hover:border-purple-500/50 hover:shadow-2xl"
+              className="group flex flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/80 p-6 shadow-xl transition-all duration-300 hover:border-purple-500/50 hover:shadow-2xl relative"
             >
+              <div className="absolute top-4 right-4 z-10">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => toggleWishlist(c.id)}
+                  className={`rounded-full h-8 w-8 hover:bg-rose-500/20 ${wished ? 'text-rose-500 bg-rose-500/10' : 'text-zinc-500 hover:text-rose-400'}`}
+                >
+                  <Heart className={`h-4 w-4 ${wished ? 'fill-rose-500' : ''}`} />
+                </Button>
+              </div>
+
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Badge className="bg-purple-950/60 text-purple-300 border-purple-800 text-[11px]">
-                    {c.category}
-                  </Badge>
-                  <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-[10px]">
+                <div className="flex items-center justify-between pr-10">
+                  <div className="flex gap-2 flex-wrap">
+                    <Badge className="bg-purple-950/60 text-purple-300 border-purple-800 text-[11px]">
+                      {c.category}
+                    </Badge>
+                    {c.endDate && <CampaignCountdown endDate={c.endDate} />}
+                  </div>
+                  <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-[10px] whitespace-nowrap ml-2">
                     <ShieldCheck className="mr-1 h-3 w-3 inline" /> {c.status}
                   </Badge>
                 </div>
@@ -136,7 +131,7 @@ export default function CampaignsDirectoryPage() {
                   </div>
 
                   <Link href={`/campaigns/${c.id}`}>
-                    <Button size="sm" variant="ghost" className="text-xs text-purple-400 hover-text-purple-300 hover-bg-purple-950/40">
+                    <Button size="sm" variant="ghost" className="text-xs text-purple-400 hover:text-purple-300 hover:bg-purple-950/40">
                       View Campaign <ChevronRight className="ml-1 h-3.5 w-3.5" />
                     </Button>
                   </Link>
