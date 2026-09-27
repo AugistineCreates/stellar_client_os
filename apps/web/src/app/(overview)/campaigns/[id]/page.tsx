@@ -30,6 +30,9 @@ import { BackerCommunity } from "@/components/modules/campaign/community/BackerC
 import { TopBackers } from "@/components/modules/campaign/backers/TopBackers";
 import { TOP_BACKERS_LIMIT } from "@/types/campaign-backers";
 import { CampaignFundingVelocityChart } from "@/components/modules/campaign/FundingVelocityChart";
+import { SustainabilityScoreBadge } from "@/components/modules/campaign/sustainability/SustainabilityScoreBadge";
+import { CampaignSustainabilityCard } from "@/components/modules/campaign/sustainability/CampaignSustainabilityCard";
+import { calculateSustainabilityScore } from "@/lib/sustainability-score";
 
 const translations = {
   es: {
@@ -99,6 +102,8 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
     impactStatement: "Permanently offset 150 metric tons of CO2 while securing habitat for 200+ endangered species.",
     beneficiaries: "5,000 local indigenous community members",
     co2OffsetTons: "150",
+    treeType: "Brazil Nut, Mahogany, Rubber Tree, Açaí Palm",
+    location: "Amazon Basin, Brazil",
     successStory: {
       headline: "From Rainforest Pledge to On-the-Ground Impact",
       creatorInterview: "Every XLM stream is tied to verifiable patrol hours and backers receive monthly GPS updates. The team shipped on every promise.",
@@ -110,6 +115,18 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
     },
     treesPlanted: "1,500",
   };
+
+  const sustainabilityScore = React.useMemo(
+    () =>
+      calculateSustainabilityScore({
+        treeType: campaign.treeType,
+        location: campaign.location,
+        treesPlanted: campaign.treesPlanted,
+        description: campaign.shortDescription,
+        category: campaign.category,
+      }),
+    [campaign.treeType, campaign.location, campaign.treesPlanted, campaign.shortDescription, campaign.category]
+  );
 
   // The mock detail page renders as the campaign creator, so creator-only
   // controls (featuring backers, managing community spaces) are exercised.
@@ -208,6 +225,11 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
               <Badge variant="outline" className="border-emerald-500 text-emerald-400 text-xs font-semibold">
                 <ShieldCheck className="mr-1 h-3 w-3" /> {campaign.status}
               </Badge>
+              <SustainabilityScoreBadge
+                score={sustainabilityScore.totalScore}
+                tier={sustainabilityScore.tier}
+                size="sm"
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -334,6 +356,17 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                   <div>Estimated CO2 Offset: <strong className="text-amber-400 font-bold">{campaign.co2OffsetTons} Tons</strong></div>
                 </div>
               </div>
+
+              {/* Environmental Sustainability Score & Impact Index (#954) */}
+              <CampaignSustainabilityCard
+                campaignId={campaign.id}
+                treeType={campaign.treeType}
+                location={campaign.location}
+                treesPlanted={campaign.treesPlanted}
+                description={campaign.shortDescription}
+                category={campaign.category}
+                initialScore={sustainabilityScore}
+              />
             </div>
 
             <div className="space-y-4">

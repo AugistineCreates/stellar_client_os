@@ -96,4 +96,21 @@ describe("Campaign detail page — top backers tab", () => {
     // The duplicated insurance-claim modal is gone: exactly one trigger.
     expect(screen.getAllByRole("button", { name: /submit insurance claim/i })).toHaveLength(1);
   });
+
+  it("renders the sustainability score badge and dashboard card in the overview tab", () => {
+    renderPage();
+
+    // Sustainability score badge in the hero banner
+    const badges = screen.getAllByTestId("sustainability-score-badge");
+    expect(badges.length).toBeGreaterThan(0);
+
+    // Sustainability score card in overview tab
+    expect(screen.getByTestId("campaign-sustainability-card")).toBeTruthy();
+    expect(screen.getByText("Ecosystem Impact Rating")).toBeTruthy();
+    expect(screen.getByText("Tree Species Diversity")).toBeTruthy();
+    expect(screen.getByText("Regional Climate Impact")).toBeTruthy();
+    expect(screen.getByText("Soil Health Improvement")).toBeTruthy();
+    expect(screen.getByText("Biodiversity Potential")).toBeTruthy();
+  });
 });
+

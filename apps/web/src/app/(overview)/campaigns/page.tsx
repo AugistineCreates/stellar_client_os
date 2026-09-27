@@ -6,6 +6,8 @@ import { Rocket, Plus, Heart, Users, ShieldCheck, ChevronRight, Trophy, Scale, S
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import SuccessStories from "@/components/modules/campaign/success-stories/SuccessStories";
+import { SustainabilityScoreBadge } from "@/components/modules/campaign/sustainability/SustainabilityScoreBadge";
+import { calculateSustainabilityScore } from "@/lib/sustainability-score";
 
 export default function CampaignsDirectoryPage() {
   const campaigns = [
@@ -20,6 +22,9 @@ export default function CampaignsDirectoryPage() {
       collaboratorCount: 2,
       status: "ACTIVE",
       description: "Protecting 50,000 hectares of primary rainforest through community-led guardianship and carbon streaming.",
+      treeType: "Brazil Nut, Mahogany, Rubber Tree, Açaí Palm",
+      location: "Amazon Basin, Brazil",
+      treesPlanted: 1500,
     },
     {
       id: "camp-102",
@@ -32,6 +37,9 @@ export default function CampaignsDirectoryPage() {
       collaboratorCount: 3,
       status: "ACTIVE",
       description: "Installing 12 solar-powered water filtration wells across rural farming villages.",
+      treeType: "Acacia",
+      location: "Sub-Saharan Africa",
+      treesPlanted: 250,
     },
   ];
 
@@ -88,6 +96,14 @@ export default function CampaignsDirectoryPage() {
       <div className="grid grid-cols-1 md-grid-cols-2 gap-6">
         {campaigns.map((c) => {
           const progress = Math.round((parseFloat(c.raisedAmount.replace(/,/g, "")) / parseFloat(c.goalAmount.replace(/,/g, ""))) * 100);
+          const sustainabilityScore = calculateSustainabilityScore({
+            treeType: c.treeType,
+            location: c.location,
+            treesPlanted: c.treesPlanted,
+            description: c.description,
+            category: c.category,
+          });
+
           return (
             <div
               key={c.id}
@@ -95,9 +111,16 @@ export default function CampaignsDirectoryPage() {
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Badge className="bg-purple-950/60 text-purple-300 border-purple-800 text-[11px]">
-                    {c.category}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-purple-950/60 text-purple-300 border-purple-800 text-[11px]">
+                      {c.category}
+                    </Badge>
+                    <SustainabilityScoreBadge
+                      score={sustainabilityScore.totalScore}
+                      tier={sustainabilityScore.tier}
+                      size="sm"
+                    />
+                  </div>
                   <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-[10px]">
                     <ShieldCheck className="mr-1 h-3 w-3 inline" /> {c.status}
                   </Badge>
