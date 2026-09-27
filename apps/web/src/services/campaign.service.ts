@@ -1,4 +1,5 @@
 import { MILESTONE_PERCENTAGES } from "../lib/campaign-milestones";
+import type { VerificationAuditEntry, VerificationEvidence } from "@/types/campaign-verification";
 import { EmailService, type SendEmailOptions } from "./email.service";
 
 export type CampaignStatus = "DRAFT" | "PENDING_VERIFICATION" | "ACTIVE" | "PAUSED" | "COMPLETED" | "FAILED";
@@ -135,6 +136,11 @@ export interface CampaignRecord {
   raisedAmount: string;
   sponsorCount: number;
   treeCount: number;
+  treeSpecies?: string;
+  gpsLocations?: Array<{ latitude: number; longitude: number; capturedAt?: number }>;
+  co2Sequestration?: string;
+  verificationEvidence?: VerificationEvidence[];
+  verificationAuditTrail?: VerificationAuditEntry[];
   /** Tradeable CO2 offset certificates issued to sponsors. */
   carbonCertificates?: CampaignCarbonCertificate[];
   createdAt: number;
@@ -754,18 +760,37 @@ export function sponsorsToCsv(campaign: CampaignRecord): string {
 
 export function impactReportToCsv(campaign: CampaignRecord): string {
   const rows = [
-    ["campaign_id", "campaign_name", "status", "goal_amount", "raised_amount", "sponsor_count", "tree_count", "created_at", "updated_at"],
-    [campaign.id, campaign.name, campaign.status, campaign.goalAmount, campaign.raisedAmount, campaign.sponsorCount, campaign.treeCount, new Date(campaign.createdAt).toISOString(), new Date(campaign.updatedAt).toISOString()],
+    ["campaign_id", "campaign_name", "status", "goal_amount", "raised_amount", "sponsor_count", "tree_count", "tree_species", "co2_sequestration", "gps_locations", "created_at", "updated_at"],
+    [campaign.id, campaign.name, campaign.status, campaign.goalAmount, campaign.raisedAmount, campaign.sponsorCount, campaign.treeCount, campaign.treeSpecies ?? "", campaign.co2Sequestration ?? "", JSON.stringify(campaign.gpsLocations ?? []), new Date(campaign.createdAt).toISOString(), new Date(campaign.updatedAt).toISOString()],
   ];
   return rows.map((row) => row.map(csvEscape).join(",")).join("\n") + "\n";
 }
-
-export async function exportCampaignCsv(campaignId: string, report: "sponsors" | "impact", dataSource = getCampaignDataSource()): Promise<string | null> {
+export function timelineToCsv(campaign: CampaignRecord): string {
+  const rows = [["event_id", "from_status", "to_status", "changed_by", "changed_at", "reason"], ...(campaign.statusHistory ?? []).map((entry) => [entry.id, entry.fromStatus ?? "", entry.toStatus, entry.changedBy, new Date(entry.changedAt).toISOString(), entry.reason ?? ""])];
+  return rows.map((row) => row.map(csvEscape).join(",")).join("\n") + "\n";
+}
+export function campaignExportJson(campaign: CampaignRecord): Record<string, unknown> {
+  return {
+    campaign: { id: campaign.id, name: campaign.name, creator: campaign.creator, status: campaign.status, goalAmount: campaign.goalAmount, raisedAmount: campaign.raisedAmount, treeCount: campaign.treeCount, treeSpecies: campaign.treeSpecies ?? null, co2Sequestration: campaign.co2Sequestration ?? null, gpsLocations: campaign.gpsLocations ?? [] },
+    sponsors: campaign.sponsors ?? [],
+    timeline: campaign.statusHistory ?? [],
+    verificationAuditTrail: campaign.verificationAuditTrail ?? [],
+    verificationEvidence: campaign.verificationEvidence ?? [],
+    exportedAt: new Date().toISOString(),
+  };
+}
+export async function exportCampaignCsv(campaignId: string, report: "sponsors" | "impact" | "timeline" | "full", dataSource = getCampaignDataSource()): Promise<string | null> {
   const campaign = await getCampaign(campaignId, dataSource);
   if (!campaign) return null;
-  return report === "sponsors" ? sponsorsToCsv(campaign) : impactReportToCsv(campaign);
+  if (report === "sponsors") return sponsorsToCsv(campaign);
+  if (report === "timeline") return timelineToCsv(campaign);
+  if (report === "full") return [impactReportToCsv(campaign), sponsorsToCsv(campaign), timelineToCsv(campaign)].join("\n");
+  return impactReportToCsv(campaign);
 }
-
+export async function exportCampaignJson(campaignId: string, dataSource = getCampaignDataSource()): Promise<Record<string, unknown> | null> {
+  const campaign = await getCampaign(campaignId, dataSource);
+  return campaign ? campaignExportJson(campaign) : null;
+}
 export function calculateCampaignCarbonCredits(campaign: Partial<CampaignRecord> = {}): bigint {
   return BigInt(campaign.treeCount ?? 0);
 }
