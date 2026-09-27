@@ -20,6 +20,7 @@ import {
 import LiveTreeCounter from "./LiveTreeCounter";
 import AnimatedProgressBar from "./AnimatedProgressBar";
 import { CampaignData, CampaignStatus } from "@/types/campaign";
+import { CampaignImpactCalculator } from "@/components/modules/impact/CampaignImpactCalculator";
 
 interface CampaignDetailProps {
   campaignId: string;
@@ -192,6 +193,15 @@ export const CampaignDetail: React.FC<CampaignDetailProps> = ({ campaignId }) =>
             currencySymbol="XLM"
           />
         </div>
+      </div>
+
+      {/* Campaign Impact Calculator (v2) */}
+      <div className="w-full">
+        <CampaignImpactCalculator 
+          campaignSpeciesId={campaign.treeType} 
+          campaignTreeCount={campaign.treesPlanted}
+          readOnly={true} 
+        />
       </div>
 
       {/* Contract & Campaign Specs Grid */}
