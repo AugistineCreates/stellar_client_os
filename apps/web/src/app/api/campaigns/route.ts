@@ -24,9 +24,11 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as {
       creator?: string;
+      creatorEmail?: string;
       name?: string;
       description?: string;
       location?: string;
+      coordinates?: { latitude?: number; longitude?: number };
       durationMs?: number;
       deadline?: number;
       goalAmount?: string;
@@ -43,6 +45,15 @@ export async function POST(request: Request) {
     }
     if (body.location !== undefined && typeof body.location !== "string") {
       return Response.json({ error: "location must be a string" }, { status: 400 });
+    }
+    let coordinates: { latitude: number; longitude: number } | undefined;
+    if (body.coordinates !== undefined) {
+      const latitude = body.coordinates.latitude;
+      const longitude = body.coordinates.longitude;
+      if (typeof latitude !== "number" || typeof longitude !== "number" || !Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+        return Response.json({ error: "coordinates must contain latitude (-90..90) and longitude (-180..180)" }, { status: 400 });
+      }
+      coordinates = { latitude, longitude };
     }
     if (body.durationMs !== undefined && (!Number.isFinite(body.durationMs) || body.durationMs < 0)) {
       return Response.json({ error: "durationMs must be a non-negative number" }, { status: 400 });
@@ -84,6 +95,7 @@ export async function POST(request: Request) {
       name: body.name,
       description,
       location: body.location,
+      coordinates,
       durationMs,
       goalAmount: body.goalAmount,
       network: body.network,

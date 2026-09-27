@@ -15,6 +15,11 @@ export type TreeType =
   | "Redwood"
   | "Birch";
 
+export interface CampaignCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface CampaignData {
   id: string;
   title: string;
@@ -32,6 +37,7 @@ export interface CampaignData {
   createdAt: number;
   deadline: number;
   location?: string;
+  coordinates?: CampaignCoordinates;
   imageUrl?: string;
   uniqueContributors?: number;
   contributionCount?: number;
