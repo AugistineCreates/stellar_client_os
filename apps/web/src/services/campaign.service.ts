@@ -139,6 +139,8 @@ export interface CampaignRecord {
   translations?: Record<string, string>;
   /** Geographic location of the campaign, used for duplicate detection. */
   location?: string;
+  /** Optional broad geographic region for discovery filtering. */
+  region?: string;
   /** Intended campaign duration in milliseconds, used for duplicate detection. */
   durationMs?: number;
   status: CampaignStatus;
@@ -607,6 +609,8 @@ export async function createCampaign(input: {
   language?: string;
   translations?: Record<string, string>;
   location?: string;
+  region?: string;
+  treeSpecies?: string;
   durationMs?: number;
   deadline?: number;
   goalAmount: string;
@@ -622,6 +626,8 @@ export async function createCampaign(input: {
     language: input.language ?? detectCampaignLanguage(input.description),
     translations: input.translations ?? {},
     location: input.location,
+    region: input.region,
+    treeSpecies: input.treeSpecies,
     durationMs: input.deadline !== undefined ? input.deadline - now : input.durationMs,
     status: "DRAFT",
     goalAmount: input.goalAmount,
