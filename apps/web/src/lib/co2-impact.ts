@@ -68,7 +68,11 @@ export function calculateCo2Offset(
   const species = getTreeSpecies(speciesId);
   const qty = Math.max(0, Math.floor(quantity) || 0);
 
-  const rainySeason = isRainySeason(dateOrTimestamp);
+  // The rainy-season bonus is a property of a known planting date. Callers
+  // without one (projection calculators, growth-stage models) must get a
+  // deterministic baseline rather than a multiplier that silently changes
+  // with the current calendar month (issue #907).
+  const rainySeason = dateOrTimestamp !== undefined && isRainySeason(dateOrTimestamp);
   const co2Multiplier = (rainySeason ? 2 : 1) * growthRateMultiplier;
 
   const baseCo2PerYearKg = qty * species.co2PerTreePerYearKg;

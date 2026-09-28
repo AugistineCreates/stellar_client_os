@@ -34,6 +34,7 @@ import { TopBackers } from "@/components/modules/campaign/backers/TopBackers";
 import { TOP_BACKERS_LIMIT } from "@/types/campaign-backers";
 import { CampaignFundingVelocityChart } from "@/components/modules/campaign/FundingVelocityChart";
 import { VerificationMediaGallery, type VerificationMediaItem } from "@/components/modules/campaign/VerificationMediaGallery";
+import { CampaignImpactCalculator } from "@/components/modules/impact/CampaignImpactCalculator";
 
 const translations = {
   es: {
@@ -394,6 +395,13 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                   </Button>
                 </div>
               </div>
+
+              {/* Issue #907: real-time CO2 sequestration display, updates as sponsors contribute. */}
+              <CampaignImpactCalculator
+                campaignSpeciesId={campaign.treeType}
+                campaignTreeCount={Number(campaign.treesPlanted.replace(/,/g, ""))}
+                readOnly
+              />
 
               <VerificationMediaGallery items={verificationMedia} />
             </div>
