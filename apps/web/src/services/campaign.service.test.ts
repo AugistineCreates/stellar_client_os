@@ -120,6 +120,17 @@ describe("campaign service", () => {
     expect(campaign.location).toBe("Kenya");
     expect(campaign.durationMs).toBe(100_000);
   });
+
+  it("persists tree species and region metadata for campaign discovery", async () => {
+    const source = new InMemoryCampaignDataSource();
+    const campaign = await createCampaign(
+      { creator: "creator-1", name: "Oak restoration", goalAmount: "100", treeSpecies: "Oak", region: "North America" },
+      source,
+      10_000,
+    );
+    expect(campaign).toMatchObject({ treeSpecies: "Oak", region: "North America" });
+    expect(await source.getCampaigns()).toContainEqual(campaign);
+  });
 });
 
 describe("findDuplicateCampaigns", () => {
