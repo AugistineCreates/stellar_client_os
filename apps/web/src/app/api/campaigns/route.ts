@@ -1,9 +1,10 @@
 import { createCampaign, findDuplicateCampaigns, queryCampaigns } from "@/services/campaign.service";
 import { autoTranslate, detectLanguage, SUPPORTED_TRANSLATION_LOCALES } from "@/lib/translation";
+import { withCampaignApiRateLimit } from "@/middlewares/rate-limit.middleware";
 
 export const runtime = "nodejs";
 
-export async function GET(request: Request) {
+async function getCampaigns(request: Request) {
   const url = new URL(request.url);
   const status = url.searchParams.get("status") as never;
   const creator = url.searchParams.get("creator") ?? undefined;
@@ -20,10 +21,11 @@ export async function GET(request: Request) {
   return Response.json({ data: campaigns, pagination: { limit, offset, count: campaigns.length } });
 }
 
-export async function POST(request: Request) {
+async function postCampaign(request: Request) {
   try {
     const body = await request.json() as {
       creator?: string;
+      creatorEmail?: string;
       name?: string;
       description?: string;
       location?: string;
@@ -121,3 +123,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON request body" }, { status: 400 });
   }
 }
+
+export const GET = withCampaignApiRateLimit(getCampaigns);
+export const POST = withCampaignApiRateLimit(postCampaign);
