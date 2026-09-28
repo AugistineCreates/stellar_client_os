@@ -2,6 +2,8 @@
 
 The Fundable Webhook Delivery System enables real-time notification of events on the platform (e.g., when a stream status is updated, milestone funds are released, or a campaign reaches a funding milestone) directly to external HTTP endpoints.
 
+Campaign integrations can subscribe to `tree_verified`, `batch_verified`, `campaign_milestone_reached`, and `campaign_completed`. Individual verification payloads use `verificationId` as their stable event identity; batch payloads use `batchId`, and completion payloads use `completionId`. A `batch_verified` event is emitted only for batches containing at least 10 trees.
+
 ## 🚀 Subscription Management API
 
 ### 1. Register a Subscription
@@ -11,7 +13,7 @@ The Fundable Webhook Delivery System enables real-time notification of events on
 ```json
 {
   "url": "https://your-service.com/webhook",
-  "events": ["stream.status_updated", "milestone.funds_released", "campaign.milestone_reached"],
+  "events": ["tree_verified", "batch_verified", "campaign_milestone_reached", "campaign_completed"],
   "secret": "your_custom_secret_key" // Optional: auto-generated if omitted (min 8 chars)
 }
 ```

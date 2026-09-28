@@ -1,6 +1,7 @@
 import { MILESTONE_PERCENTAGES } from "../lib/campaign-milestones";
 import type { VerificationAuditEntry, VerificationEvidence } from "@/types/campaign-verification";
 import { EmailService, type SendEmailOptions } from "./email.service";
+import { CampaignWebhookService } from "./campaign-webhook.service";
 import { pushNotificationService } from "./push-notification.service";
 import type { CampaignWebhookEvent } from "@/types/webhook";
 
@@ -883,6 +884,20 @@ export async function transitionCampaignStatus(
       reason,
     }],
   };
+  const saved = await dataSource.saveCampaign(next);
+  if (toStatus === "COMPLETED") {
+    void new CampaignWebhookService().campaignCompleted({
+      completionId: `${campaign.id}:completed:${now}`,
+      campaignId: campaign.id,
+      completedAt: new Date(now).toISOString(),
+      treeCount: saved.treeCount,
+      raisedAmount: saved.raisedAmount,
+      goalAmount: saved.goalAmount,
+    }).catch((error) => {
+      console.error(`[Campaign webhook] Failed to dispatch completion for ${campaign.id}:`, error);
+    });
+  }
+  return saved;
 
   if (campaign.sponsorCount > 0) {
     if (campaign.status === "PENDING_VERIFICATION" && toStatus === "ACTIVE") {
