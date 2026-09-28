@@ -140,6 +140,7 @@ const TREE_TYPES: TreeType[] = [
   "Baobab",
   "Redwood",
   "Birch",
+  "General Fund",
 ];
 
 const STATUS_LIST: (CampaignStatus | "All")[] = [
@@ -454,7 +455,7 @@ export const CampaignSearch: React.FC = () => {
                   <div className="flex items-center justify-between">
                     {getStatusBadge(campaign.status)}
                     <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-md border border-emerald-500/20">
-                      🌲 {campaign.treeType}
+                      {campaign.treeType === "General Fund" ? "💼 General Fund" : `🌲 ${campaign.treeType}`}
                     </span>
                   </div>
 
@@ -469,12 +470,14 @@ export const CampaignSearch: React.FC = () => {
                   </div>
 
                   {/* Trees Planted Badge */}
-                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-xs">
-                    <span className="text-zinc-400">Trees Impact:</span>
-                    <span className="font-bold text-zinc-200">
-                      {campaign.treesPlanted.toLocaleString()} / {campaign.targetTrees.toLocaleString()} Trees
-                    </span>
-                  </div>
+                  {campaign.treeType !== "General Fund" && (
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/80 text-xs">
+                      <span className="text-zinc-400">Trees Impact:</span>
+                      <span className="font-bold text-zinc-200">
+                        {campaign.treesPlanted.toLocaleString()} / {campaign.targetTrees.toLocaleString()} Trees
+                      </span>
+                    </div>
+                  )}
 
                   {/* Progress Bar */}
                   <div className="space-y-1.5">
