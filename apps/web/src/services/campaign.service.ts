@@ -469,16 +469,67 @@ function parseContributionAmount(amount: string): bigint {
   return BigInt(amount.trim());
 }
 
-function milestoneEmailHtml(campaignName: string, percentage: number): string {
+export interface MilestoneEmailImpactMetrics {
+  treeCount: number;
+  co2OffsetKg: number;
+  sponsorCount: number;
+  raisedAmount: string;
+  goalAmount: string;
+  location?: string;
+}
+
+/**
+ * Builds the HTML body for a milestone notification email.
+ * When `metrics` is supplied the email includes an impact summary card showing
+ * trees planted, estimated CO2 sequestered, number of sponsors, and the
+ * current raised/goal amounts. (#983)
+ */
+export function milestoneEmailHtml(
+  campaignName: string,
+  percentage: number,
+  metrics?: MilestoneEmailImpactMetrics,
+): string {
   const headline =
     percentage === 100
       ? `Your campaign is fully funded!`
       : `Your campaign has reached ${percentage}% of its funding goal.`;
+
+  const impactBlock = metrics
+    ? [
+        `<table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f6f4fb;border-radius:8px;">`,
+        `  <tr>`,
+        `    <td style="padding:12px 16px;border-right:1px solid #d9d4ee;">`,
+        `      <div style="font-size:11px;color:#6b6b80;text-transform:uppercase;letter-spacing:.05em;">Trees planted</div>`,
+        `      <div style="font-size:22px;font-weight:700;color:#4f2d99;">${metrics.treeCount.toLocaleString()}</div>`,
+        `    </td>`,
+        `    <td style="padding:12px 16px;border-right:1px solid #d9d4ee;">`,
+        `      <div style="font-size:11px;color:#6b6b80;text-transform:uppercase;letter-spacing:.05em;">CO&#8322; sequestered / yr</div>`,
+        `      <div style="font-size:22px;font-weight:700;color:#1a7248;">${metrics.co2OffsetKg.toFixed(1)} kg</div>`,
+        `    </td>`,
+        `    <td style="padding:12px 16px;border-right:1px solid #d9d4ee;">`,
+        `      <div style="font-size:11px;color:#6b6b80;text-transform:uppercase;letter-spacing:.05em;">Sponsors</div>`,
+        `      <div style="font-size:22px;font-weight:700;color:#4f2d99;">${metrics.sponsorCount.toLocaleString()}</div>`,
+        `    </td>`,
+        `    <td style="padding:12px 16px;">`,
+        `      <div style="font-size:11px;color:#6b6b80;text-transform:uppercase;letter-spacing:.05em;">Raised / Goal</div>`,
+        `      <div style="font-size:14px;font-weight:700;color:#1a1a28;">${metrics.raisedAmount} / ${metrics.goalAmount}</div>`,
+        `    </td>`,
+        `  </tr>`,
+        `</table>`,
+        metrics.location
+          ? `<p style="font-size:12px;color:#6b6b80;">&#128205; ${metrics.location}</p>`
+          : "",
+      ].join("\n")
+    : "";
+
   return [
-    `<h2>${campaignName}</h2>`,
-    `<p>${headline}</p>`,
-    `<p><a href="/campaigns">View your campaign</a></p>`,
-    `<p>— Fundable Protocol</p>`,
+    `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;">`,
+    `  <h2 style="color:#4f2d99;">${campaignName}</h2>`,
+    `  <p style="font-size:16px;">${headline}</p>`,
+    impactBlock,
+    `  <p><a href="/campaigns" style="color:#4f2d99;">View your campaign</a></p>`,
+    `  <p style="color:#6b6b80;font-size:12px;">— Fundable Protocol</p>`,
+    `</div>`,
   ].join("\n");
 }
 
@@ -517,11 +568,22 @@ export async function recordCampaignContribution(
   const newlyReached = reached.filter((percentage) => !notified.includes(percentage));
 
   if (newlyReached.length > 0 && campaign.creatorEmail) {
+    // Build impact metrics to include in every milestone email (#983).
+    // CO2 estimate: use a conservative average of 20 kg CO2/tree/year.
+    const CO2_KG_PER_TREE_PER_YEAR = 20;
+    const impactMetrics: MilestoneEmailImpactMetrics = {
+      treeCount: campaign.treeCount,
+      co2OffsetKg: campaign.treeCount * CO2_KG_PER_TREE_PER_YEAR,
+      sponsorCount: campaign.sponsorCount,
+      raisedAmount: newRaised.toString(),
+      goalAmount: campaign.goalAmount,
+      location: campaign.location,
+    };
     for (const percentage of newlyReached) {
       await emailService.sendEmail({
         to: campaign.creatorEmail,
         subject: `${campaign.name} reached ${percentage}% of its goal`,
-        html: milestoneEmailHtml(campaign.name, percentage),
+        html: milestoneEmailHtml(campaign.name, percentage, impactMetrics),
       });
     }
   }
