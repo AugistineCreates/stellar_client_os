@@ -26,6 +26,15 @@ export interface SponsorRecord {
   sponsoredAt: number;
 }
 
+export interface CampaignNonprofitPartner {
+  legalName: string;
+  registrationNumber: string;
+  country: string;
+  verificationStatus: "PENDING" | "VERIFIED" | "REJECTED";
+  verifiedAt?: number;
+  verifiedBy?: string;
+}
+
 export type CarbonCertificateStatus = "issued" | "listed" | "transferred" | "retired";
 export type CarbonCreditStatus = CarbonCertificateStatus;
 
@@ -149,6 +158,8 @@ export interface CampaignRecord {
   statusChangedAt: number;
   network?: "testnet" | "mainnet";
   sponsors: SponsorRecord[];
+  /** Partner details are eligible for certificates only after independent verification. */
+  nonprofitPartner?: CampaignNonprofitPartner;
   statusHistory: StatusHistoryEntry[];
   creatorVerification?: CampaignVerificationSummary;
   verification?: CampaignVerificationSummary;
@@ -536,6 +547,7 @@ export async function createCampaign(input: {
   deadline?: number;
   goalAmount: string;
   network?: "testnet" | "mainnet";
+  nonprofitPartner?: Omit<CampaignNonprofitPartner, "verificationStatus" | "verifiedAt" | "verifiedBy">;
 }, dataSource = getCampaignDataSource(), now = Date.now()): Promise<CampaignRecord> {
   const campaign: CampaignRecord = {
     id: input.id ?? crypto.randomUUID(),
@@ -557,6 +569,9 @@ export async function createCampaign(input: {
     statusChangedAt: now,
     network: input.network,
     sponsors: [],
+    nonprofitPartner: input.nonprofitPartner
+      ? { ...input.nonprofitPartner, verificationStatus: "PENDING" }
+      : undefined,
     milestonesNotified: [],
     statusHistory: [{
       id: `${input.id ?? "campaign"}:${now}:0`,
@@ -571,6 +586,27 @@ export async function createCampaign(input: {
   campaign.statusHistory[0].campaignId = campaign.id;
   campaign.statusHistory[0].id = `${campaign.id}:${now}:0`;
   return dataSource.saveCampaign(campaign);
+}
+
+export async function reviewCampaignNonprofitPartner(
+  campaignId: string,
+  verificationStatus: "VERIFIED" | "REJECTED",
+  reviewer: string,
+  dataSource: CampaignDataSource = getCampaignDataSource(),
+  now = Date.now(),
+): Promise<CampaignRecord | null> {
+  if (!reviewer.trim()) throw new Error("reviewer is required");
+  const campaign = await getCampaign(campaignId, dataSource);
+  if (!campaign) return null;
+  if (!campaign.nonprofitPartner) throw new Error("Campaign has no nonprofit partner");
+
+  const partner = {
+    ...campaign.nonprofitPartner,
+    verificationStatus,
+    verifiedAt: verificationStatus === "VERIFIED" ? now : undefined,
+    verifiedBy: verificationStatus === "VERIFIED" ? reviewer.trim() : undefined,
+  };
+  return dataSource.saveCampaign({ ...campaign, nonprofitPartner: partner, updatedAt: now });
 }
 
 /**
