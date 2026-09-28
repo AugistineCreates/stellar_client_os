@@ -118,7 +118,7 @@ export const CampaignDetail: React.FC<CampaignDetailProps> = ({ campaignId }) =>
             </span>
 
             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-zinc-800/80 text-zinc-300 border border-zinc-700/50">
-              🌲 {campaign.treeType} Species
+              {campaign.treeType === "General Fund" ? "💼 General Fund" : `🌲 ${campaign.treeType} Species`}
             </span>
           </div>
 
@@ -174,17 +174,19 @@ export const CampaignDetail: React.FC<CampaignDetailProps> = ({ campaignId }) =>
       {/* Issue #702: Live Tree Counter & Animated Progress Bar Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Animated Tree Ticker (Issue #702) */}
-        <div className="lg:col-span-5">
-          <LiveTreeCounter
-            treesPlanted={campaign.treesPlanted}
-            targetTrees={campaign.targetTrees}
-            costPerTree={campaign.costPerTree}
-            treeType={campaign.treeType}
-          />
-        </div>
+        {campaign.treeType !== "General Fund" && (
+          <div className="lg:col-span-5">
+            <LiveTreeCounter
+              treesPlanted={campaign.treesPlanted}
+              targetTrees={campaign.targetTrees}
+              costPerTree={campaign.costPerTree}
+              treeType={campaign.treeType}
+            />
+          </div>
+        )}
 
         {/* Animated Goal Progress Bar (Issue #702) */}
-        <div className="lg:col-span-7">
+        <div className={campaign.treeType === "General Fund" ? "lg:col-span-12" : "lg:col-span-7"}>
           <AnimatedProgressBar
             totalRaised={totalRaisedNum}
             targetAmount={targetAmountNum}

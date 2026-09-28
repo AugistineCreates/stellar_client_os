@@ -1,5 +1,6 @@
 import { MILESTONE_PERCENTAGES } from "../lib/campaign-milestones";
 import { EmailService, type SendEmailOptions } from "./email.service";
+import { pushNotificationService } from "./push-notification.service";
 
 export type CampaignStatus = "DRAFT" | "PENDING_VERIFICATION" | "ACTIVE" | "PAUSED" | "COMPLETED" | "FAILED";
 
@@ -171,6 +172,7 @@ export interface CampaignRecord {
   /** Funding milestones (e.g. 25, 50, 75, 100) that have already triggered a
    * creator notification for this campaign (issue #793). */
   milestonesNotified?: number[];
+  impactAchieved?: boolean;
 }
 
 export interface CampaignCreatorBadge {
@@ -225,6 +227,15 @@ export class InMemoryCampaignDataSource implements CampaignDataSource {
   }
 
   async saveCampaign(campaign: CampaignRecord): Promise<CampaignRecord> {
+    const existing = this.campaigns.get(campaign.id);
+    if (existing && campaign.sponsorCount > 0) {
+      if ((existing.treeCount ?? 0) < (campaign.treeCount ?? 0)) {
+        pushNotificationService.notifyMilestone(campaign.id, campaign.name, "trees planted", campaign.creator).catch(() => {});
+      }
+      if (!existing.impactAchieved && campaign.impactAchieved) {
+        pushNotificationService.notifyMilestone(campaign.id, campaign.name, "impact achieved", campaign.creator).catch(() => {});
+      }
+    }
     this.campaigns.set(campaign.id, campaign);
     return campaign;
   }
@@ -703,6 +714,15 @@ export async function transitionCampaignStatus(
       reason,
     }],
   };
+
+  if (campaign.sponsorCount > 0) {
+    if (campaign.status === "PENDING_VERIFICATION" && toStatus === "ACTIVE") {
+      pushNotificationService.notifyMilestone(campaign.id, campaign.name, "verification complete", campaign.creator).catch(() => {});
+    } else if (toStatus === "COMPLETED") {
+      pushNotificationService.notifyMilestone(campaign.id, campaign.name, "campaign finished", campaign.creator).catch(() => {});
+    }
+  }
+
   return dataSource.saveCampaign(next);
 }
 

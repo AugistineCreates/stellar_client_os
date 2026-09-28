@@ -73,6 +73,8 @@ pub enum CampaignStatus {
     Active,
     /// Minimum target met; creator may claim the raised funds.
     Successful,
+    /// Verifier has approved trees are planted.
+    Verified,
     /// Deadline passed without reaching the minimum target; contributors may
     /// claim full refunds.
     Failed,
@@ -375,20 +377,21 @@ pub enum Error {
     PlantingNotFound = 19,
     /// Tree planting is already verified.
     AlreadyVerified = 20,
-    DeadlineTooFar = 23,
     /// The campaign is not in the `VerificationFailed` state.
-    CampaignNotVerificationFailed = 18,
+    CampaignNotVerificationFailed = 21,
     /// The insurance pool fee rate exceeds the protocol maximum.
-    InsuranceFeeTooHigh = 19,
+    InsuranceFeeTooHigh = 22,
     /// `set_team_rewards` was called with an empty team.
-    TeamEmpty = 20,
+    TeamEmpty = 23,
     /// The team's `percentage_bps` values do not sum to exactly 100 %
     /// (`10_000`), or a member has a zero / out-of-range percentage.
-    TeamInvalidSplit = 21,
+    TeamInvalidSplit = 24,
     /// The team contains two members with the same payout address.
-    TeamDuplicateMember = 22,
+    TeamDuplicateMember = 25,
     /// Campaign ID space exhausted (u64::MAX reached).
-    ContractFull = 23,
+    ContractFull = 26,
+    /// Campaign is not verified.
+    CampaignNotVerified = 27,
 }
 
 // ---------------------------------------------------------------------------
@@ -630,6 +633,50 @@ impl CampaignFundingContract {
         );
 
         count
+    }
+
+    /// Verify a campaign after trees are planted.
+    ///
+    /// Only the contract admin can call this. Transitions campaign from Successful to Verified.
+    ///
+    /// # Arguments
+    /// * `campaign_id` — ID of the campaign to verify.
+    ///
+    /// # Errors
+    /// * [`Error::NotInitialized`]        — contract not initialised.
+    /// * [`Error::Unauthorized`]          — caller is not the admin.
+    /// * [`Error::CampaignNotFound`]      — campaign does not exist.
+    /// * [`Error::CampaignNotSuccessful`] — campaign is not in `Successful` state.
+    pub fn verify_campaign(env: Env, campaign_id: u64) {
+        Self::assert_initialized(&env);
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
+        admin.require_auth();
+
+        let mut campaign: Campaign = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Campaign(campaign_id))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::CampaignNotFound));
+
+        if campaign.status != CampaignStatus::Successful {
+            panic_with_error!(&env, Error::CampaignNotSuccessful);
+        }
+
+        campaign.status = CampaignStatus::Verified;
+        Self::save_campaign(&env, campaign_id, &campaign);
+        Self::record_status_change(&env, campaign_id, CampaignStatus::Verified);
+
+        env.events().publish(
+            ("CampaignStatusChanged", campaign_id),
+            CampaignStatusChangedEvent {
+                campaign_id,
+                new_status: CampaignStatus::Verified,
+            },
+        );
     }
 
     /// Mark a campaign as having lost its trees during verification.
@@ -921,8 +968,8 @@ impl CampaignFundingContract {
         if campaign.status == CampaignStatus::Claimed {
             panic_with_error!(&env, Error::AlreadyClaimed);
         }
-        if campaign.status != CampaignStatus::Successful {
-            panic_with_error!(&env, Error::CampaignNotSuccessful);
+        if campaign.status != CampaignStatus::Verified {
+            panic_with_error!(&env, Error::CampaignNotVerified);
         }
 
         let gross = campaign.total_raised;
@@ -2546,6 +2593,7 @@ mod tests {
         set_time(&env, 3_000);
         client.trigger_expiry(&id);
 
+        client.verify_campaign(&id);
         client.claim_funds(&id);
 
         // 2.5 % fee on 8_000 = 200; net = 7_800.
@@ -2576,6 +2624,7 @@ mod tests {
         client.contribute(&contributor, &id, &6_000);
         set_time(&env, 3_000);
         client.trigger_expiry(&id);
+        client.verify_campaign(&id);
         client.claim_funds(&id);
 
         assert_eq!(token_client.balance(&creator), 6_000);
@@ -2583,7 +2632,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #11)")]
+    #[should_panic(expected = "Error(Contract, #27)")]
     fn test_claim_funds_on_active_campaign() {
         let env = Env::default();
         env.mock_all_auths();
@@ -2599,7 +2648,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #11)")]
+    #[should_panic(expected = "Error(Contract, #27)")]
     fn test_claim_funds_on_failed_campaign() {
         let env = Env::default();
         env.mock_all_auths();
@@ -2635,6 +2684,7 @@ mod tests {
         client.contribute(&contributor, &id, &6_000);
         set_time(&env, 3_000);
         client.trigger_expiry(&id);
+        client.verify_campaign(&id);
         client.claim_funds(&id);
         client.claim_funds(&id); // Must panic.
     }
@@ -2854,6 +2904,7 @@ mod tests {
         client.contribute(&contributor, &id, &9_999);
         set_time(&env, 3_000);
         client.trigger_expiry(&id);
+        client.verify_campaign(&id);
         client.claim_funds(&id);
 
         // fee = ceil(9_999 * 100 / 10_000) = ceil(99.99) = 100; net = 9_899.
@@ -2959,6 +3010,7 @@ mod tests {
         let id = client.create_campaign(&creator, &token_addr, &10_000, &5_000, &2_000);
         client.contribute(&contributor, &id, &10_000); // Auto-succeed
         set_time(&env, 3_000);
+        client.verify_campaign(&id);
         client.claim_funds(&id);
 
         let history = client.get_status_history(&id);
@@ -2980,6 +3032,7 @@ mod tests {
         client.contribute(&contributor, &id, &8_000);
         set_time(&env, 3_000);
         client.trigger_expiry(&id);
+        client.verify_campaign(&id);
         client.claim_funds(&id);
 
         // 2.5 % fee on 8_000 = 200; net to creator = 7_800.
@@ -3019,6 +3072,7 @@ mod tests {
         client.contribute(&contributor, &id, &6_000);
         set_time(&env, 3_000);
         client.trigger_expiry(&id);
+        client.verify_campaign(&id);
         client.claim_funds(&id);
 
         // With a 0 % fee no protocol fee flows, so no fee event may be emitted.

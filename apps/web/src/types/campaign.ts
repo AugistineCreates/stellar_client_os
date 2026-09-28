@@ -13,7 +13,8 @@ export type TreeType =
   | "Fruit Tree"
   | "Baobab"
   | "Redwood"
-  | "Birch";
+  | "Birch"
+  | "General Fund";
 
 export interface CampaignData {
   id: string;
