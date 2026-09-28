@@ -16,6 +16,15 @@ export type TreeType =
   | "Birch"
   | "General Fund";
 
+export type Region = 
+  | "North America"
+  | "South America"
+  | "Europe"
+  | "Africa"
+  | "Asia"
+  | "Oceania"
+  | "Global";
+
 export interface CampaignData {
   id: string;
   title: string;
@@ -33,6 +42,7 @@ export interface CampaignData {
   createdAt: number;
   deadline: number;
   location?: string;
+  region?: Region;
   imageUrl?: string;
   uniqueContributors?: number;
   contributionCount?: number;
@@ -42,6 +52,7 @@ export interface CampaignFilterOptions {
   searchQuery: string;
   status: CampaignStatus | "All";
   treeType: TreeType | "All";
+  region: Region | "All";
   progressRange: "All" | "0-25%" | "25-50%" | "50-75%" | "75-100%" | "100%+";
   sortBy: "trending" | "newest" | "progress" | "target";
 }
