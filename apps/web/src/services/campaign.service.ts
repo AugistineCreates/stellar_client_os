@@ -1,7 +1,9 @@
 import { MILESTONE_PERCENTAGES } from "../lib/campaign-milestones";
 import type { VerificationAuditEntry, VerificationEvidence } from "@/types/campaign-verification";
 import { EmailService, type SendEmailOptions } from "./email.service";
+import { CampaignWebhookService } from "./campaign-webhook.service";
 import { pushNotificationService } from "./push-notification.service";
+import type { CampaignWebhookEvent } from "@/types/webhook";
 
 export type CampaignStatus = "DRAFT" | "PENDING_VERIFICATION" | "ACTIVE" | "PAUSED" | "COMPLETED" | "FAILED";
 
@@ -148,6 +150,8 @@ export interface CampaignRecord {
   longitude?: number;
   /** Annual CO2 sequestration represented by the campaign, in kilograms. */
   co2SequestrationKg?: string;
+  /** Optional broad geographic region for discovery filtering. */
+  region?: string;
   /** Intended campaign duration in milliseconds, used for duplicate detection. */
   durationMs?: number;
   status: CampaignStatus;
@@ -198,7 +202,29 @@ export interface CampaignRecord {
   /** Funding milestones (e.g. 25, 50, 75, 100) that have already triggered a
    * creator notification for this campaign (issue #793). */
   milestonesNotified?: number[];
+  /** Impact thresholds already reached, including those without subscribers. */
+  impactMilestonesReached?: ImpactMilestone[];
   impactAchieved?: boolean;
+}
+
+export const IMPACT_MILESTONES = ["1000_trees", "5000_trees", "10_tons_co2"] as const;
+export type ImpactMilestone = (typeof IMPACT_MILESTONES)[number];
+
+function validCo2Tonnes(value: string | undefined): number | null {
+  if (value === undefined || !/^\d+(?:\.\d+)?$/.test(value)) return null;
+  const tonnes = Number(value);
+  return Number.isFinite(tonnes) ? tonnes : null;
+}
+
+/** Return each impact threshold satisfied by the campaign's current totals. */
+export function reachedImpactMilestones(campaign: CampaignRecord): ImpactMilestone[] {
+  const trees = Number.isSafeInteger(campaign.treeCount) && campaign.treeCount >= 0 ? campaign.treeCount : 0;
+  const co2Tonnes = validCo2Tonnes(campaign.co2Sequestration);
+  return IMPACT_MILESTONES.filter((milestone) => {
+    if (milestone === "1000_trees") return trees >= 1000;
+    if (milestone === "5000_trees") return trees >= 5000;
+    return co2Tonnes !== null && co2Tonnes >= 10;
+  });
 }
 
 export interface CampaignCreatorBadge {
@@ -248,6 +274,16 @@ export interface CampaignQueryInput {
 export class InMemoryCampaignDataSource implements CampaignDataSource {
   private campaigns = new Map<string, CampaignRecord>();
 
+  constructor(
+    private readonly dispatchImpactEvent: (
+      event: CampaignWebhookEvent,
+      payload: Record<string, unknown>,
+    ) => Promise<void> = async (event, payload) => {
+      const { dispatchCampaignWebhook } = await import("./webhook.service");
+      await dispatchCampaignWebhook(event, payload);
+    },
+  ) {}
+
   async getCampaigns(network?: string): Promise<CampaignRecord[]> {
     return Array.from(this.campaigns.values()).filter((campaign) => !network || campaign.network === network);
   }
@@ -262,8 +298,32 @@ export class InMemoryCampaignDataSource implements CampaignDataSource {
         pushNotificationService.notifyMilestone(campaign.id, campaign.name, "impact achieved", campaign.creator).catch(() => {});
       }
     }
-    this.campaigns.set(campaign.id, campaign);
-    return campaign;
+    const alreadyReached = new Set<ImpactMilestone>([
+      ...(existing?.impactMilestonesReached ?? []),
+      ...(existing ? reachedImpactMilestones(existing) : []),
+    ]);
+    const currentMilestones = reachedImpactMilestones(campaign);
+    const newlyReached = currentMilestones.filter((milestone) => !alreadyReached.has(milestone));
+    const saved = {
+      ...campaign,
+      impactMilestonesReached: [...new Set([...alreadyReached, ...currentMilestones])],
+    };
+    this.campaigns.set(campaign.id, saved);
+
+    for (const milestone of newlyReached) {
+      try {
+        await this.dispatchImpactEvent("campaign_milestone_reached", {
+          eventId: `${campaign.id}:impact:${milestone}`,
+          campaignId: campaign.id,
+          milestone,
+          treeCount: campaign.treeCount,
+          co2Sequestration: campaign.co2Sequestration ?? null,
+        });
+      } catch (error) {
+        console.error(`[Impact milestone webhook] Failed to dispatch ${milestone} for ${campaign.id}:`, error);
+      }
+    }
+    return saved;
   }
 }
 
@@ -616,6 +676,8 @@ export async function createCampaign(input: {
   language?: string;
   translations?: Record<string, string>;
   location?: string;
+  region?: string;
+  treeSpecies?: string;
   durationMs?: number;
   deadline?: number;
   goalAmount: string;
@@ -631,6 +693,8 @@ export async function createCampaign(input: {
     language: input.language ?? detectCampaignLanguage(input.description),
     translations: input.translations ?? {},
     location: input.location,
+    region: input.region,
+    treeSpecies: input.treeSpecies,
     durationMs: input.deadline !== undefined ? input.deadline - now : input.durationMs,
     status: "DRAFT",
     goalAmount: input.goalAmount,
@@ -829,6 +893,20 @@ export async function transitionCampaignStatus(
       reason,
     }],
   };
+  const saved = await dataSource.saveCampaign(next);
+  if (toStatus === "COMPLETED") {
+    void new CampaignWebhookService().campaignCompleted({
+      completionId: `${campaign.id}:completed:${now}`,
+      campaignId: campaign.id,
+      completedAt: new Date(now).toISOString(),
+      treeCount: saved.treeCount,
+      raisedAmount: saved.raisedAmount,
+      goalAmount: saved.goalAmount,
+    }).catch((error) => {
+      console.error(`[Campaign webhook] Failed to dispatch completion for ${campaign.id}:`, error);
+    });
+  }
+  return saved;
 
   if (campaign.sponsorCount > 0) {
     if (campaign.status === "PENDING_VERIFICATION" && toStatus === "ACTIVE") {
