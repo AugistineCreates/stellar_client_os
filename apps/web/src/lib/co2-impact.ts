@@ -41,11 +41,11 @@ export interface Co2ImpactResult {
  * (issue #714)
  */
 export function isRainySeason(dateOrTimestamp?: Date | number): boolean {
-  const date = dateOrTimestamp
-    ? typeof dateOrTimestamp === "number"
+  if (dateOrTimestamp === undefined) return false;
+  const date =
+    typeof dateOrTimestamp === "number"
       ? new Date(dateOrTimestamp * 1000)
-      : dateOrTimestamp
-    : new Date();
+      : dateOrTimestamp;
   const month = date.getMonth() + 1; // 1-indexed (1=Jan, 5=May, 10=Oct)
   return month >= 5 && month <= 10;
 }
