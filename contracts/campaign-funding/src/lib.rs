@@ -1793,6 +1793,43 @@ impl CampaignFundingContract {
         );
     }
 
+    /// Retrieve the configured carbon credit token contract address for a campaign.
+    pub fn get_carbon_token(env: Env, campaign_id: u64) -> Option<Address> {
+        let key = DataKey::CarbonToken(campaign_id);
+        env.storage().persistent().get(&key)
+    }
+
+    /// Check if carbon credit tokens have already been minted for a campaign.
+    pub fn is_carbon_credit_minted(env: Env, campaign_id: u64) -> bool {
+        let minted_key = DataKey::CarbonCreditsMinted(campaign_id);
+        env.storage().persistent().get(&minted_key).unwrap_or(false)
+    }
+
+    /// Calculate the carbon credit token allocation (1 token = 1 ton CO2 eq) for a sponsor.
+    pub fn get_sponsor_carbon_credit_allocation(
+        env: Env,
+        campaign_id: u64,
+        sponsor: Address,
+    ) -> i128 {
+        let campaign = Self::load_campaign(&env, campaign_id);
+        if campaign.total_raised == 0 {
+            return 0;
+        }
+
+        let contribution_key = DataKey::Contribution(campaign_id, sponsor);
+        let sponsor_contrib: i128 = env.storage().persistent().get(&contribution_key).unwrap_or(0);
+        if sponsor_contrib <= 0 {
+            return 0;
+        }
+
+        let verified_trees = Self::get_verified_tree_count(env.clone(), campaign_id);
+        let multiplier = Self::get_co2_multiplier(env.clone(), campaign_id);
+        let total_credits = (verified_trees as i128).saturating_mul(multiplier as i128);
+
+        // Sponsor credits = (sponsor_contrib * total_credits) / total_raised
+        (sponsor_contrib.saturating_mul(total_credits)) / campaign.total_raised
+    }
+
     // -----------------------------------------------------------------------
     // Admin setters
     // -----------------------------------------------------------------------
@@ -3873,5 +3910,43 @@ mod tests {
         assert_eq!(trees3, 10_000);
         assert_eq!(next3, 10_000);
         assert_eq!(prog3, 10_000); // 100% achieved
+    }
+
+    // -----------------------------------------------------------------------
+    // Carbon Credit Token Minting Tests (Issue #845)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_carbon_credit_getters_and_sponsor_allocation() {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000);
+        let (_, client, _, _) = setup_contract(&env);
+        let creator = Address::generate(&env);
+        let sponsor = Address::generate(&env);
+        let token = Address::generate(&env);
+        let carbon_token = Address::generate(&env);
+
+        let id = client.create_campaign(&creator, &token, &10_000, &5_000, &2_000);
+
+        // Initially no carbon token configured
+        assert_eq!(client.get_carbon_token(&id), None);
+        assert_eq!(client.is_carbon_credit_minted(&id), false);
+
+        // Configure carbon token
+        client.set_carbon_token(&id, &carbon_token);
+        assert_eq!(client.get_carbon_token(&id), Some(carbon_token));
+
+        // Sponsor contributes 5,000 out of 10,000 (50%)
+        client.contribute(&sponsor, &id, &5_000);
+
+        // Plant and verify 1,000 trees
+        let planter = Address::generate(&env);
+        client.record_tree_planting(&id, &planter, &1_000);
+        client.verify_tree_planting(&id, &0);
+
+        // Allocation: 50% of 1,000 trees * 1x multiplier = 500 carbon credit tokens
+        let allocation = client.get_sponsor_carbon_credit_allocation(&id, &sponsor);
+        assert_eq!(allocation, 500);
     }
 }
