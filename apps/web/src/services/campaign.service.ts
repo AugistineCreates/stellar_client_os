@@ -1,7 +1,9 @@
 import { MILESTONE_PERCENTAGES } from "../lib/campaign-milestones";
 import type { VerificationAuditEntry, VerificationEvidence } from "@/types/campaign-verification";
 import { EmailService, type SendEmailOptions } from "./email.service";
+import { CampaignWebhookService } from "./campaign-webhook.service";
 import { pushNotificationService } from "./push-notification.service";
+import type { CampaignWebhookEvent } from "@/types/webhook";
 
 export type CampaignStatus = "DRAFT" | "PENDING_VERIFICATION" | "ACTIVE" | "PAUSED" | "COMPLETED" | "FAILED";
 
@@ -139,6 +141,10 @@ export interface CampaignRecord {
   translations?: Record<string, string>;
   /** Geographic location of the campaign, used for duplicate detection. */
   location?: string;
+  /** Array of country codes or names the campaign spans, for geographic diversity. */
+  countries?: string[];
+  /** Optional broad geographic region for discovery filtering. */
+  region?: string;
   /** Intended campaign duration in milliseconds, used for duplicate detection. */
   durationMs?: number;
   status: CampaignStatus;
@@ -189,7 +195,29 @@ export interface CampaignRecord {
   /** Funding milestones (e.g. 25, 50, 75, 100) that have already triggered a
    * creator notification for this campaign (issue #793). */
   milestonesNotified?: number[];
+  /** Impact thresholds already reached, including those without subscribers. */
+  impactMilestonesReached?: ImpactMilestone[];
   impactAchieved?: boolean;
+}
+
+export const IMPACT_MILESTONES = ["1000_trees", "5000_trees", "10_tons_co2"] as const;
+export type ImpactMilestone = (typeof IMPACT_MILESTONES)[number];
+
+function validCo2Tonnes(value: string | undefined): number | null {
+  if (value === undefined || !/^\d+(?:\.\d+)?$/.test(value)) return null;
+  const tonnes = Number(value);
+  return Number.isFinite(tonnes) ? tonnes : null;
+}
+
+/** Return each impact threshold satisfied by the campaign's current totals. */
+export function reachedImpactMilestones(campaign: CampaignRecord): ImpactMilestone[] {
+  const trees = Number.isSafeInteger(campaign.treeCount) && campaign.treeCount >= 0 ? campaign.treeCount : 0;
+  const co2Tonnes = validCo2Tonnes(campaign.co2Sequestration);
+  return IMPACT_MILESTONES.filter((milestone) => {
+    if (milestone === "1000_trees") return trees >= 1000;
+    if (milestone === "5000_trees") return trees >= 5000;
+    return co2Tonnes !== null && co2Tonnes >= 10;
+  });
 }
 
 export interface CampaignCreatorBadge {
@@ -239,6 +267,16 @@ export interface CampaignQueryInput {
 export class InMemoryCampaignDataSource implements CampaignDataSource {
   private campaigns = new Map<string, CampaignRecord>();
 
+  constructor(
+    private readonly dispatchImpactEvent: (
+      event: CampaignWebhookEvent,
+      payload: Record<string, unknown>,
+    ) => Promise<void> = async (event, payload) => {
+      const { dispatchCampaignWebhook } = await import("./webhook.service");
+      await dispatchCampaignWebhook(event, payload);
+    },
+  ) {}
+
   async getCampaigns(network?: string): Promise<CampaignRecord[]> {
     return Array.from(this.campaigns.values()).filter((campaign) => !network || campaign.network === network);
   }
@@ -253,8 +291,32 @@ export class InMemoryCampaignDataSource implements CampaignDataSource {
         pushNotificationService.notifyMilestone(campaign.id, campaign.name, "impact achieved", campaign.creator).catch(() => {});
       }
     }
-    this.campaigns.set(campaign.id, campaign);
-    return campaign;
+    const alreadyReached = new Set<ImpactMilestone>([
+      ...(existing?.impactMilestonesReached ?? []),
+      ...(existing ? reachedImpactMilestones(existing) : []),
+    ]);
+    const currentMilestones = reachedImpactMilestones(campaign);
+    const newlyReached = currentMilestones.filter((milestone) => !alreadyReached.has(milestone));
+    const saved = {
+      ...campaign,
+      impactMilestonesReached: [...new Set([...alreadyReached, ...currentMilestones])],
+    };
+    this.campaigns.set(campaign.id, saved);
+
+    for (const milestone of newlyReached) {
+      try {
+        await this.dispatchImpactEvent("campaign_milestone_reached", {
+          eventId: `${campaign.id}:impact:${milestone}`,
+          campaignId: campaign.id,
+          milestone,
+          treeCount: campaign.treeCount,
+          co2Sequestration: campaign.co2Sequestration ?? null,
+        });
+      } catch (error) {
+        console.error(`[Impact milestone webhook] Failed to dispatch ${milestone} for ${campaign.id}:`, error);
+      }
+    }
+    return saved;
   }
 }
 
@@ -471,6 +533,8 @@ function parseContributionAmount(amount: string): bigint {
 
 export interface MilestoneEmailImpactMetrics {
   treeCount: number;
+  /** Number of trees that have been independently verified on-chain. */
+  verifiedTreeCount?: number;
   co2OffsetKg: number;
   sponsorCount: number;
   raisedAmount: string;
@@ -479,20 +543,53 @@ export interface MilestoneEmailImpactMetrics {
 }
 
 /**
+ * Converts a numeric funding percentage to the stable milestone key used by
+ * the notification schedule and dispatch layer (e.g. 50 → "50_percent",
+ * 100 → "goal_reached"). Returns `null` for non-standard values.
+ */
+export function percentageToMilestoneKey(percentage: number): string | null {
+  if (percentage === 25) return "25_percent";
+  if (percentage === 50) return "50_percent";
+  if (percentage === 75) return "75_percent";
+  if (percentage === 100) return "goal_reached";
+  return null;
+}
+
+/**
  * Builds the HTML body for a milestone notification email.
  * When `metrics` is supplied the email includes an impact summary card showing
- * trees planted, estimated CO2 sequestered, number of sponsors, and the
- * current raised/goal amounts. (#983)
+ * trees planted (and verified trees if available), estimated CO2 sequestered,
+ * number of sponsors, and the current raised/goal amounts. (#983, #915)
+ *
+ * @param audience  "creator" (default) renders creator-specific copy;
+ *                  "sponsor" renders backer-facing copy.
  */
 export function milestoneEmailHtml(
   campaignName: string,
   percentage: number,
   metrics?: MilestoneEmailImpactMetrics,
+  audience: "creator" | "sponsor" = "creator",
 ): string {
+  const isFullyFunded = percentage === 100;
+
   const headline =
-    percentage === 100
-      ? `Your campaign is fully funded!`
-      : `Your campaign has reached ${percentage}% of its funding goal.`;
+    audience === "sponsor"
+      ? isFullyFunded
+        ? `A campaign you back is fully funded!`
+        : `A campaign you back has reached ${percentage}% of its funding goal.`
+      : isFullyFunded
+        ? `Your campaign is fully funded!`
+        : `Your campaign has reached ${percentage}% of its funding goal.`;
+
+  const ctaHref = audience === "sponsor" ? `/campaigns` : `/campaigns`;
+  const ctaLabel = audience === "sponsor" ? `View campaign` : `View your campaign`;
+
+  const treeLabel =
+    metrics && metrics.verifiedTreeCount !== undefined && metrics.verifiedTreeCount > 0
+      ? `${metrics.treeCount.toLocaleString()} <span style="font-size:12px;color:#1a7248;">(${metrics.verifiedTreeCount.toLocaleString()} verified ✓)</span>`
+      : metrics
+        ? `${metrics.treeCount.toLocaleString()}`
+        : "0";
 
   const impactBlock = metrics
     ? [
@@ -500,7 +597,7 @@ export function milestoneEmailHtml(
         `  <tr>`,
         `    <td style="padding:12px 16px;border-right:1px solid #d9d4ee;">`,
         `      <div style="font-size:11px;color:#6b6b80;text-transform:uppercase;letter-spacing:.05em;">Trees planted</div>`,
-        `      <div style="font-size:22px;font-weight:700;color:#4f2d99;">${metrics.treeCount.toLocaleString()}</div>`,
+        `      <div style="font-size:22px;font-weight:700;color:#4f2d99;">${treeLabel}</div>`,
         `    </td>`,
         `    <td style="padding:12px 16px;border-right:1px solid #d9d4ee;">`,
         `      <div style="font-size:11px;color:#6b6b80;text-transform:uppercase;letter-spacing:.05em;">CO&#8322; sequestered / yr</div>`,
@@ -527,7 +624,7 @@ export function milestoneEmailHtml(
     `  <h2 style="color:#4f2d99;">${campaignName}</h2>`,
     `  <p style="font-size:16px;">${headline}</p>`,
     impactBlock,
-    `  <p><a href="/campaigns" style="color:#4f2d99;">View your campaign</a></p>`,
+    `  <p><a href="${ctaHref}" style="color:#4f2d99;">${ctaLabel}</a></p>`,
     `  <p style="color:#6b6b80;font-size:12px;">— Fundable Protocol</p>`,
     `</div>`,
   ].join("\n");
@@ -607,6 +704,9 @@ export async function createCampaign(input: {
   language?: string;
   translations?: Record<string, string>;
   location?: string;
+  countries?: string[];
+  region?: string;
+  treeSpecies?: string;
   durationMs?: number;
   deadline?: number;
   goalAmount: string;
@@ -622,6 +722,9 @@ export async function createCampaign(input: {
     language: input.language ?? detectCampaignLanguage(input.description),
     translations: input.translations ?? {},
     location: input.location,
+    countries: input.countries,
+    region: input.region,
+    treeSpecies: input.treeSpecies,
     durationMs: input.deadline !== undefined ? input.deadline - now : input.durationMs,
     status: "DRAFT",
     goalAmount: input.goalAmount,
@@ -820,6 +923,20 @@ export async function transitionCampaignStatus(
       reason,
     }],
   };
+  const saved = await dataSource.saveCampaign(next);
+  if (toStatus === "COMPLETED") {
+    void new CampaignWebhookService().campaignCompleted({
+      completionId: `${campaign.id}:completed:${now}`,
+      campaignId: campaign.id,
+      completedAt: new Date(now).toISOString(),
+      treeCount: saved.treeCount,
+      raisedAmount: saved.raisedAmount,
+      goalAmount: saved.goalAmount,
+    }).catch((error) => {
+      console.error(`[Campaign webhook] Failed to dispatch completion for ${campaign.id}:`, error);
+    });
+  }
+  return saved;
 
   if (campaign.sponsorCount > 0) {
     if (campaign.status === "PENDING_VERIFICATION" && toStatus === "ACTIVE") {
@@ -891,7 +1008,7 @@ export function timelineToCsv(campaign: CampaignRecord): string {
 }
 export function campaignExportJson(campaign: CampaignRecord): Record<string, unknown> {
   return {
-    campaign: { id: campaign.id, name: campaign.name, creator: campaign.creator, status: campaign.status, goalAmount: campaign.goalAmount, raisedAmount: campaign.raisedAmount, treeCount: campaign.treeCount, treeSpecies: campaign.treeSpecies ?? null, co2Sequestration: campaign.co2Sequestration ?? null, gpsLocations: campaign.gpsLocations ?? [] },
+    campaign: { id: campaign.id, name: campaign.name, creator: campaign.creator, status: campaign.status, goalAmount: campaign.goalAmount, raisedAmount: campaign.raisedAmount, treeCount: campaign.treeCount, treeSpecies: campaign.treeSpecies ?? null, co2Sequestration: campaign.co2Sequestration ?? null, gpsLocations: campaign.gpsLocations ?? [], countries: campaign.countries ?? [] },
     sponsors: campaign.sponsors ?? [],
     timeline: campaign.statusHistory ?? [],
     verificationAuditTrail: campaign.verificationAuditTrail ?? [],
@@ -912,7 +1029,12 @@ export async function exportCampaignJson(campaignId: string, dataSource = getCam
   return campaign ? campaignExportJson(campaign) : null;
 }
 export function calculateCampaignCarbonCredits(campaign: Partial<CampaignRecord> = {}): bigint {
-  return BigInt(campaign.treeCount ?? 0);
+  const baseCredits = BigInt(campaign.treeCount ?? 0);
+  const uniqueCountries = new Set(campaign.countries ?? []);
+  if (uniqueCountries.size > 1) {
+    return (baseCredits * 12n) / 10n;
+  }
+  return baseCredits;
 }
 
 export async function getCampaignCarbonCertificates(campaignId: string, dataSource = getCampaignDataSource()): Promise<CampaignCarbonCertificate[]> {
