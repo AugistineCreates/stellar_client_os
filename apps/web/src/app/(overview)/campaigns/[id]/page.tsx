@@ -35,6 +35,7 @@ import { TopBackers } from "@/components/modules/campaign/backers/TopBackers";
 import { TOP_BACKERS_LIMIT } from "@/types/campaign-backers";
 import { CampaignFundingVelocityChart } from "@/components/modules/campaign/FundingVelocityChart";
 import { VerificationMediaGallery, type VerificationMediaItem } from "@/components/modules/campaign/VerificationMediaGallery";
+import { CO2SequestrationProjection } from "@/components/modules/dashboard/CO2SequestrationProjection";
 
 const translations = {
   es: {
@@ -397,6 +398,11 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
               </div>
 
               <VerificationMediaGallery items={verificationMedia} />
+
+              <CO2SequestrationProjection
+                campaignSpeciesId={campaign.treeType?.toLowerCase()}
+                campaignTreeCount={parseInt(campaign.treesPlanted.replace(/,/g, ""), 10) || undefined}
+              />
             </div>
 
             <div className="space-y-4">
