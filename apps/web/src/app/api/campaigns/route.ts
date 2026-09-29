@@ -29,6 +29,7 @@ async function postCampaign(request: Request) {
       name?: string;
       description?: string;
       location?: string;
+      countries?: string[];
       region?: string;
       treeSpecies?: string;
       durationMs?: number;
@@ -52,6 +53,9 @@ async function postCampaign(request: Request) {
     }
     if (body.location !== undefined && typeof body.location !== "string") {
       return Response.json({ error: "location must be a string" }, { status: 400 });
+    }
+    if (body.countries !== undefined && (!Array.isArray(body.countries) || body.countries.some((c) => typeof c !== "string"))) {
+      return Response.json({ error: "countries must be an array of strings" }, { status: 400 });
     }
     if (body.region !== undefined && typeof body.region !== "string") {
       return Response.json({ error: "region must be a string" }, { status: 400 });
@@ -119,6 +123,7 @@ async function postCampaign(request: Request) {
       name: body.name,
       description,
       location: body.location,
+      countries: body.countries,
       region: body.region,
       treeSpecies: body.treeSpecies,
       durationMs,

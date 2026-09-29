@@ -141,6 +141,8 @@ export interface CampaignRecord {
   translations?: Record<string, string>;
   /** Geographic location of the campaign, used for duplicate detection. */
   location?: string;
+  /** Array of country codes or names the campaign spans, for geographic diversity. */
+  countries?: string[];
   /** Optional broad geographic region for discovery filtering. */
   region?: string;
   /** Intended campaign duration in milliseconds, used for duplicate detection. */
@@ -667,6 +669,7 @@ export async function createCampaign(input: {
   language?: string;
   translations?: Record<string, string>;
   location?: string;
+  countries?: string[];
   region?: string;
   treeSpecies?: string;
   durationMs?: number;
@@ -684,6 +687,7 @@ export async function createCampaign(input: {
     language: input.language ?? detectCampaignLanguage(input.description),
     translations: input.translations ?? {},
     location: input.location,
+    countries: input.countries,
     region: input.region,
     treeSpecies: input.treeSpecies,
     durationMs: input.deadline !== undefined ? input.deadline - now : input.durationMs,
@@ -969,7 +973,7 @@ export function timelineToCsv(campaign: CampaignRecord): string {
 }
 export function campaignExportJson(campaign: CampaignRecord): Record<string, unknown> {
   return {
-    campaign: { id: campaign.id, name: campaign.name, creator: campaign.creator, status: campaign.status, goalAmount: campaign.goalAmount, raisedAmount: campaign.raisedAmount, treeCount: campaign.treeCount, treeSpecies: campaign.treeSpecies ?? null, co2Sequestration: campaign.co2Sequestration ?? null, gpsLocations: campaign.gpsLocations ?? [] },
+    campaign: { id: campaign.id, name: campaign.name, creator: campaign.creator, status: campaign.status, goalAmount: campaign.goalAmount, raisedAmount: campaign.raisedAmount, treeCount: campaign.treeCount, treeSpecies: campaign.treeSpecies ?? null, co2Sequestration: campaign.co2Sequestration ?? null, gpsLocations: campaign.gpsLocations ?? [], countries: campaign.countries ?? [] },
     sponsors: campaign.sponsors ?? [],
     timeline: campaign.statusHistory ?? [],
     verificationAuditTrail: campaign.verificationAuditTrail ?? [],
@@ -990,7 +994,12 @@ export async function exportCampaignJson(campaignId: string, dataSource = getCam
   return campaign ? campaignExportJson(campaign) : null;
 }
 export function calculateCampaignCarbonCredits(campaign: Partial<CampaignRecord> = {}): bigint {
-  return BigInt(campaign.treeCount ?? 0);
+  const baseCredits = BigInt(campaign.treeCount ?? 0);
+  const uniqueCountries = new Set(campaign.countries ?? []);
+  if (uniqueCountries.size > 1) {
+    return (baseCredits * 12n) / 10n;
+  }
+  return baseCredits;
 }
 
 export async function getCampaignCarbonCertificates(campaignId: string, dataSource = getCampaignDataSource()): Promise<CampaignCarbonCertificate[]> {
