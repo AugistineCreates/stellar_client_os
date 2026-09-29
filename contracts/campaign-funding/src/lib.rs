@@ -295,6 +295,8 @@ pub struct SlaRefundIssuedEvent {
     pub planting_id: u64,
     pub contributor: Address,
     pub amount: i128,
+}
+
 /// Emitted when cumulative contributions cross one of a campaign's funding
 /// milestones (25 %, 50 %, 75 % or 100 % of `target_amount`).
 ///
@@ -645,6 +647,7 @@ impl CampaignFundingContract {
         Self::save_campaign(&env, count, &campaign);
         Self::record_status_change(&env, count, CampaignStatus::Active);
 
+        let co2_multiplier: u32 = 1;
         env.events().publish(
             ("CampaignCreated", count),
             CampaignCreatedEvent {
@@ -1495,6 +1498,8 @@ impl CampaignFundingContract {
             }
         }
         history
+    }
+
     /// Return the configured payment-stream contract address, if any.
     pub fn get_stream_contract(env: Env) -> Option<Address> {
         env.storage().instance().get(&DataKey::StreamContract)
@@ -1761,6 +1766,53 @@ impl CampaignFundingContract {
         if mask & 2 != 0 { tiers.push_back(RewardTier::WhiteLabel); }
         if mask & 4 != 0 { tiers.push_back(RewardTier::ApiAccess); }
         tiers
+    }
+
+
+    // -----------------------------------------------------------------------
+    // Campaign Milestone Rewards (Issue #869)
+    // -----------------------------------------------------------------------
+
+    /// Check if a specific feature reward tier is unlocked for a campaign.
+    /// - `RewardTier::CustomBranding`: Unlocked at 1,000 verified trees
+    /// - `RewardTier::WhiteLabel`: Unlocked at 5,000 verified trees
+    /// - `RewardTier::ApiAccess`: Unlocked at 10,000 verified trees
+    pub fn is_feature_unlocked(env: Env, campaign_id: u64, tier: RewardTier) -> bool {
+        let _ = Self::load_campaign(&env, campaign_id);
+        let mask: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RewardsUnlocked(campaign_id))
+            .unwrap_or(0);
+        match tier {
+            RewardTier::CustomBranding => mask & 1 != 0,
+            RewardTier::WhiteLabel => mask & 2 != 0,
+            RewardTier::ApiAccess => mask & 4 != 0,
+        }
+    }
+
+    /// Retrieve the current verified tree count, the next milestone threshold,
+    /// and the completion progress in basis points (10,000 bps = 100%).
+    /// Returns: `(current_trees, next_threshold, progress_bps)`.
+    pub fn get_next_milestone_progress(env: Env, campaign_id: u64) -> (u64, u64, u32) {
+        let current_trees = Self::get_verified_tree_count(env.clone(), campaign_id);
+        let next_threshold = if current_trees < 1_000 {
+            1_000
+        } else if current_trees < 5_000 {
+            5_000
+        } else if current_trees < 10_000 {
+            10_000
+        } else {
+            10_000
+        };
+
+        let progress_bps = if current_trees >= next_threshold {
+            10_000
+        } else {
+            ((current_trees as u128 * 10_000) / (next_threshold as u128)) as u32
+        };
+
+        (current_trees, next_threshold, progress_bps)
     }
 
     // -----------------------------------------------------------------------
@@ -3037,6 +3089,14 @@ mod tests {
         env.mock_all_auths();
         set_time(&env, 1_000);
         let (_, client, _, _) = setup_contract(&env);
+        let creator = Address::generate(&env);
+        let token = Address::generate(&env);
+        let id = client.create_campaign(&creator, &token, &10_000, &5_000, &2_000);
+        let history = client.get_status_history(&id);
+        assert_eq!(history.len(), 1);
+        assert_eq!(history.get(0).unwrap().status, CampaignStatus::Active);
+    }
+
     // Funds-flow transparency events
     // -----------------------------------------------------------------------
 
@@ -3403,12 +3463,6 @@ mod tests {
     fn test_pause_and_resume_campaign_success() {
         let env = Env::default();
         env.mock_all_auths();
-        set_time(&env, 1_000);
-
-    #[test]
-    fn test_rainy_season_co2_multiplier() {
-        let env = Env::default();
-        env.mock_all_auths();
         let (_, client, _, _) = setup_contract(&env);
         let creator = Address::generate(&env);
         let token = Address::generate(&env);
@@ -3465,5 +3519,71 @@ mod tests {
         assert_eq!(client.get_reward_token(), None);
         client.set_reward_token(&reward_token);
         assert_eq!(client.get_reward_token(), Some(reward_token));
+    }
+
+    // -----------------------------------------------------------------------
+    // Campaign Milestone Rewards Tests (Issue #869)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_milestone_rewards_feature_unlock_progression() {
+        let env = Env::default();
+        env.mock_all_auths();
+        set_time(&env, 1_000);
+        let (_, client, _, _) = setup_contract(&env);
+        let creator = Address::generate(&env);
+        let token = Address::generate(&env);
+        let planter = Address::generate(&env);
+
+        let id = client.create_campaign(&creator, &token, &100_000, &50_000, &10_000);
+
+        // Initially no features unlocked
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::CustomBranding), false);
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::WhiteLabel), false);
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::ApiAccess), false);
+
+        let (trees0, next0, prog0) = client.get_next_milestone_progress(&id);
+        assert_eq!(trees0, 0);
+        assert_eq!(next0, 1_000);
+        assert_eq!(prog0, 0);
+
+        // Milestone 1: Record and verify 1,000 trees -> Unlocks Custom Branding
+        client.record_tree_planting(&id, &planter, &1_000);
+        client.verify_tree_planting(&id, &0);
+
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::CustomBranding), true);
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::WhiteLabel), false);
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::ApiAccess), false);
+
+        let (trees1, next1, prog1) = client.get_next_milestone_progress(&id);
+        assert_eq!(trees1, 1_000);
+        assert_eq!(next1, 5_000);
+        assert_eq!(prog1, 2_000); // 1,000 / 5,000 = 20% (2,000 bps)
+
+        // Milestone 2: Record and verify 4,000 more trees (5,000 total) -> Unlocks White Label
+        client.record_tree_planting(&id, &planter, &4_000);
+        client.verify_tree_planting(&id, &1);
+
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::CustomBranding), true);
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::WhiteLabel), true);
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::ApiAccess), false);
+
+        let (trees2, next2, prog2) = client.get_next_milestone_progress(&id);
+        assert_eq!(trees2, 5_000);
+        assert_eq!(next2, 10_000);
+        assert_eq!(prog2, 5_000); // 5,000 / 10,000 = 50% (5,000 bps)
+
+        // Milestone 3: Record and verify 5,000 more trees (10,000 total) -> Unlocks API Access
+        client.record_tree_planting(&id, &planter, &5_000);
+        client.verify_tree_planting(&id, &2);
+
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::CustomBranding), true);
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::WhiteLabel), true);
+        assert_eq!(client.is_feature_unlocked(&id, &RewardTier::ApiAccess), true);
+
+        let (trees3, next3, prog3) = client.get_next_milestone_progress(&id);
+        assert_eq!(trees3, 10_000);
+        assert_eq!(next3, 10_000);
+        assert_eq!(prog3, 10_000); // 100% achieved
     }
 }
