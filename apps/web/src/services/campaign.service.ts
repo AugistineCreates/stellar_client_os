@@ -531,6 +531,8 @@ function parseContributionAmount(amount: string): bigint {
 
 export interface MilestoneEmailImpactMetrics {
   treeCount: number;
+  /** Number of trees that have been independently verified on-chain. */
+  verifiedTreeCount?: number;
   co2OffsetKg: number;
   sponsorCount: number;
   raisedAmount: string;
@@ -539,20 +541,53 @@ export interface MilestoneEmailImpactMetrics {
 }
 
 /**
+ * Converts a numeric funding percentage to the stable milestone key used by
+ * the notification schedule and dispatch layer (e.g. 50 → "50_percent",
+ * 100 → "goal_reached"). Returns `null` for non-standard values.
+ */
+export function percentageToMilestoneKey(percentage: number): string | null {
+  if (percentage === 25) return "25_percent";
+  if (percentage === 50) return "50_percent";
+  if (percentage === 75) return "75_percent";
+  if (percentage === 100) return "goal_reached";
+  return null;
+}
+
+/**
  * Builds the HTML body for a milestone notification email.
  * When `metrics` is supplied the email includes an impact summary card showing
- * trees planted, estimated CO2 sequestered, number of sponsors, and the
- * current raised/goal amounts. (#983)
+ * trees planted (and verified trees if available), estimated CO2 sequestered,
+ * number of sponsors, and the current raised/goal amounts. (#983, #915)
+ *
+ * @param audience  "creator" (default) renders creator-specific copy;
+ *                  "sponsor" renders backer-facing copy.
  */
 export function milestoneEmailHtml(
   campaignName: string,
   percentage: number,
   metrics?: MilestoneEmailImpactMetrics,
+  audience: "creator" | "sponsor" = "creator",
 ): string {
+  const isFullyFunded = percentage === 100;
+
   const headline =
-    percentage === 100
-      ? `Your campaign is fully funded!`
-      : `Your campaign has reached ${percentage}% of its funding goal.`;
+    audience === "sponsor"
+      ? isFullyFunded
+        ? `A campaign you back is fully funded!`
+        : `A campaign you back has reached ${percentage}% of its funding goal.`
+      : isFullyFunded
+        ? `Your campaign is fully funded!`
+        : `Your campaign has reached ${percentage}% of its funding goal.`;
+
+  const ctaHref = audience === "sponsor" ? `/campaigns` : `/campaigns`;
+  const ctaLabel = audience === "sponsor" ? `View campaign` : `View your campaign`;
+
+  const treeLabel =
+    metrics && metrics.verifiedTreeCount !== undefined && metrics.verifiedTreeCount > 0
+      ? `${metrics.treeCount.toLocaleString()} <span style="font-size:12px;color:#1a7248;">(${metrics.verifiedTreeCount.toLocaleString()} verified ✓)</span>`
+      : metrics
+        ? `${metrics.treeCount.toLocaleString()}`
+        : "0";
 
   const impactBlock = metrics
     ? [
@@ -560,7 +595,7 @@ export function milestoneEmailHtml(
         `  <tr>`,
         `    <td style="padding:12px 16px;border-right:1px solid #d9d4ee;">`,
         `      <div style="font-size:11px;color:#6b6b80;text-transform:uppercase;letter-spacing:.05em;">Trees planted</div>`,
-        `      <div style="font-size:22px;font-weight:700;color:#4f2d99;">${metrics.treeCount.toLocaleString()}</div>`,
+        `      <div style="font-size:22px;font-weight:700;color:#4f2d99;">${treeLabel}</div>`,
         `    </td>`,
         `    <td style="padding:12px 16px;border-right:1px solid #d9d4ee;">`,
         `      <div style="font-size:11px;color:#6b6b80;text-transform:uppercase;letter-spacing:.05em;">CO&#8322; sequestered / yr</div>`,
@@ -587,7 +622,7 @@ export function milestoneEmailHtml(
     `  <h2 style="color:#4f2d99;">${campaignName}</h2>`,
     `  <p style="font-size:16px;">${headline}</p>`,
     impactBlock,
-    `  <p><a href="/campaigns" style="color:#4f2d99;">View your campaign</a></p>`,
+    `  <p><a href="${ctaHref}" style="color:#4f2d99;">${ctaLabel}</a></p>`,
     `  <p style="color:#6b6b80;font-size:12px;">— Fundable Protocol</p>`,
     `</div>`,
   ].join("\n");
