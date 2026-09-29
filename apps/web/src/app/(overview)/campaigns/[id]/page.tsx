@@ -33,6 +33,7 @@ import { CampaignFollowButton } from "@/components/modules/campaign/follow/Campa
 import { TopBackers } from "@/components/modules/campaign/backers/TopBackers";
 import { TOP_BACKERS_LIMIT } from "@/types/campaign-backers";
 import { CampaignFundingVelocityChart } from "@/components/modules/campaign/FundingVelocityChart";
+import { CampaignFollow } from "@/components/modules/campaign/CampaignFollow";
 import { VerificationMediaGallery, type VerificationMediaItem } from "@/components/modules/campaign/VerificationMediaGallery";
 import { CO2SequestrationProjection } from "@/components/modules/dashboard/CO2SequestrationProjection";
 
@@ -302,6 +303,8 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
             <p lang={translationLang || detectedLang} className="text-sm text-zinc-300 leading-relaxed">
               {translation?.shortDescription ?? campaign.shortDescription}
             </p>
+
+            <CampaignFollow campaignId={campaign.id} />
 
             <div className="flex items-center gap-4 text-xs text-zinc-400 pt-2">
               <span>Created by: <strong className="text-zinc-200 font-mono">{campaign.creator}</strong></span>
