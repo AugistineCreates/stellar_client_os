@@ -9,6 +9,7 @@ async function getCampaigns(request: Request) {
   const status = url.searchParams.get("status") as never;
   const creator = url.searchParams.get("creator") ?? undefined;
   const search = url.searchParams.get("search") ?? undefined;
+  const includeStats = url.searchParams.get("includeStats") === "true";
   const limit = Number(url.searchParams.get("limit") ?? 20);
   const offset = Number(url.searchParams.get("offset") ?? 0);
   const campaigns = await queryCampaigns({
@@ -18,6 +19,22 @@ async function getCampaigns(request: Request) {
     offset: Number.isFinite(offset) ? offset : 0,
     network: (url.searchParams.get("network") as "testnet" | "mainnet" | null) ?? undefined,
   });
+  if (includeStats && creator) {
+    const totalTrees = campaigns.reduce((sum, campaign) => sum + (Number(campaign.treesPlanted) || 0), 0);
+    const totalSponsors = campaigns.reduce((sum, campaign) => sum + (Number(campaign.sponsorCount) || 0), 0);
+    const totalCo2 = campaigns.reduce((sum, campaign) => sum + (Number(campaign.co2Sequestered) || 0), 0);
+    return Response.json({
+      data: campaigns,
+      pagination: { limit, offset, count: campaigns.length },
+      stats: {
+        totalCampaigns: campaigns.length,
+        totalTrees,
+        totalSponsors,
+        totalCo2,
+        profileUrl: `/creators/${encodeURIComponent(creator)}`,
+      },
+    });
+  }
   return Response.json({ data: campaigns, pagination: { limit, offset, count: campaigns.length } });
 }
 
