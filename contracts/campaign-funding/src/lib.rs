@@ -85,6 +85,10 @@ pub enum DataKey {
     CarbonCreditsMinted(u64),
     /// Stored CO₂ multiplier for a campaign (1 = dry season, 2 = rainy season).
     Co2Multiplier(u64),
+    /// Number of group sponsorships created for a campaign.
+    GroupSponsorshipCount(u64),
+    /// Group sponsorship details keyed by campaign and group ID.
+    GroupSponsorship(u64, u64),
 }
 
 /// Current lifecycle state of a campaign.
@@ -175,6 +179,22 @@ pub struct TeamMember {
     pub percentage_bps: u32,
 }
 
+/// A named group of sponsors funding a campaign together.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GroupSponsorship {
+    /// Campaign receiving the group's contributions.
+    pub campaign_id: u64,
+    /// Unique identifier within the campaign.
+    pub group_id: u64,
+    /// Public recognition name for the group.
+    pub name: soroban_sdk::String,
+    /// Address that created the group.
+    pub organizer: Address,
+    /// Sum of direct contributions made by the group's members.
+    pub total_contributed: i128,
+}
+
 // ---------------------------------------------------------------------------
 // Event types
 // ---------------------------------------------------------------------------
@@ -196,6 +216,27 @@ pub struct CampaignCreatedEvent {
     /// Unix timestamp deadline for contributions.
     pub deadline: u64,
     pub co2_multiplier: u32,
+}
+
+/// Emitted when a group sponsorship is created.
+#[contracttype]
+#[derive(Clone)]
+pub struct GroupSponsorshipCreatedEvent {
+    pub campaign_id: u64,
+    pub group_id: u64,
+    pub name: soroban_sdk::String,
+    pub organizer: Address,
+}
+
+/// Emitted when a sponsor contributes through a group sponsorship.
+#[contracttype]
+#[derive(Clone)]
+pub struct GroupContributionMadeEvent {
+    pub campaign_id: u64,
+    pub group_id: u64,
+    pub contributor: Address,
+    pub amount: i128,
+    pub group_total: i128,
 }
 
 /// Emitted each time a contributor adds tokens to a campaign.
@@ -477,6 +518,12 @@ pub enum Error {
     CarbonTokenNotSet = 33,
     /// Carbon credit tokens have already been minted for this campaign.
     CarbonCreditsAlreadyMinted = 34,
+    /// The requested group sponsorship does not exist.
+    GroupSponsorshipNotFound = 35,
+    /// A group sponsorship name must not be empty.
+    GroupNameEmpty = 36,
+    /// A group sponsorship name exceeds the 64-byte limit.
+    GroupNameTooLong = 37,
 }
 
 // ---------------------------------------------------------------------------
@@ -883,6 +930,105 @@ impl CampaignFundingContract {
                 campaign_id,
                 contributor,
                 amount,
+            },
+        );
+    }
+
+    /// Create a named group sponsorship for an active campaign.
+    ///
+    /// Members contribute individually through [`contribute_to_group`], so
+    /// their existing refund and reward records remain tied to their wallets.
+    /// Names are limited to 64 UTF-8 bytes and need not be unique.
+    pub fn create_group_sponsorship(
+        env: Env,
+        organizer: Address,
+        campaign_id: u64,
+        name: soroban_sdk::String,
+    ) -> u64 {
+        organizer.require_auth();
+        let campaign = Self::load_campaign(&env, campaign_id);
+        if campaign.status == CampaignStatus::Paused {
+            panic_with_error!(&env, Error::CampaignPaused);
+        }
+        if campaign.status != CampaignStatus::Active
+            || env.ledger().timestamp() >= campaign.deadline
+        {
+            panic_with_error!(&env, Error::CampaignNotActive);
+        }
+        if name.len() == 0 {
+            panic_with_error!(&env, Error::GroupNameEmpty);
+        }
+        if name.len() > 64 {
+            panic_with_error!(&env, Error::GroupNameTooLong);
+        }
+
+        let count_key = DataKey::GroupSponsorshipCount(campaign_id);
+        let previous_count: u64 = env.storage().persistent().get(&count_key).unwrap_or(0);
+        let group_id = previous_count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::ContractFull));
+        let group = GroupSponsorship {
+            campaign_id,
+            group_id,
+            name: name.clone(),
+            organizer: organizer.clone(),
+            total_contributed: 0,
+        };
+        let group_key = DataKey::GroupSponsorship(campaign_id, group_id);
+        env.storage().persistent().set(&group_key, &group);
+        env.storage().persistent().set(&count_key, &group_id);
+        env.storage()
+            .persistent()
+            .extend_ttl(&group_key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        env.storage()
+            .persistent()
+            .extend_ttl(&count_key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        env.events().publish(
+            ("GroupSponsorshipCreated", campaign_id),
+            GroupSponsorshipCreatedEvent {
+                campaign_id,
+                group_id,
+                name,
+                organizer,
+            },
+        );
+        group_id
+    }
+
+    /// Contribute individually to a campaign through a named group.
+    pub fn contribute_to_group(
+        env: Env,
+        contributor: Address,
+        campaign_id: u64,
+        group_id: u64,
+        amount: i128,
+    ) {
+        contributor.require_auth();
+        let group_key = DataKey::GroupSponsorship(campaign_id, group_id);
+        let mut group: GroupSponsorship = env
+            .storage()
+            .persistent()
+            .get(&group_key)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::GroupSponsorshipNotFound));
+
+        Self::contribute(env.clone(), contributor.clone(), campaign_id, amount);
+
+        group.total_contributed = group
+            .total_contributed
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&env, Error::ArithmeticOverflow));
+        env.storage().persistent().set(&group_key, &group);
+        env.storage()
+            .persistent()
+            .extend_ttl(&group_key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        env.events().publish(
+            ("GroupContributionMade", campaign_id),
+            GroupContributionMadeEvent {
+                campaign_id,
+                group_id,
+                contributor,
+                amount,
+                group_total: group.total_contributed,
             },
         );
     }
@@ -1480,6 +1626,42 @@ impl CampaignFundingContract {
     /// Return revenue shares in basis points and payout order.
     pub fn get_campaign_revenue_shares(env: Env, campaign_id: u64) -> Vec<u32> {
         Self::load_campaign(&env, campaign_id).revenue_shares
+    }
+
+    /// Return one group's sponsorship record and cumulative contribution.
+    pub fn get_group_sponsorship(
+        env: Env,
+        campaign_id: u64,
+        group_id: u64,
+    ) -> GroupSponsorship {
+        Self::load_campaign(&env, campaign_id);
+        env.storage()
+            .persistent()
+            .get(&DataKey::GroupSponsorship(campaign_id, group_id))
+            .unwrap_or_else(|| panic_with_error!(&env, Error::GroupSponsorshipNotFound))
+    }
+
+    /// Return all group sponsorships for a campaign in creation order.
+    pub fn get_group_sponsorships(env: Env, campaign_id: u64) -> Vec<GroupSponsorship> {
+        Self::load_campaign(&env, campaign_id);
+        let count: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::GroupSponsorshipCount(campaign_id))
+            .unwrap_or(0);
+        let mut groups = Vec::new(&env);
+        let mut group_id = 1;
+        while group_id <= count {
+            if let Some(group) = env
+                .storage()
+                .persistent()
+                .get(&DataKey::GroupSponsorship(campaign_id, group_id))
+            {
+                groups.push_back(group);
+            }
+            group_id += 1;
+        }
+        groups
     }
 
     /// Return the total amount contributed by `contributor` to `campaign_id`.
