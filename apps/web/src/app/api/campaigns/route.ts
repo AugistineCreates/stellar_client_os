@@ -1,4 +1,5 @@
 import { createCampaign, findDuplicateCampaigns, queryCampaigns } from "@/services/campaign.service";
+import { listCreditListings, createCreditListing, purchaseCreditListing } from "@/services/carbon-credit-market.service";
 import { autoTranslate, detectLanguage, SUPPORTED_TRANSLATION_LOCALES } from "@/lib/translation";
 import { withCampaignApiRateLimit } from "@/middlewares/rate-limit.middleware";
 
@@ -134,5 +135,80 @@ async function postCampaign(request: Request) {
   }
 }
 
+async function getCreditListings(request: Request) {
+  const url = new URL(request.url);
+  const campaignId = url.searchParams.get("campaignId") ?? undefined;
+  const seller = url.searchParams.get("seller") ?? undefined;
+  const status = url.searchParams.get("status") as never;
+  const listings = await listCreditListings({ campaignId, seller, status });
+  return Response.json({ data: listings });
+}
+
+async function postCreditListing(request: Request) {
+  try {
+    const body = await request.json() as {
+      campaignId?: string;
+      seller?: string;
+      amount?: string;
+      pricePerCredit?: string;
+      network?: "testnet" | "mainnet";
+    };
+    if (!body.campaignId || !body.seller || !body.amount || !body.pricePerCredit) {
+      return Response.json(
+        { error: "campaignId, seller, amount, and pricePerCredit are required" },
+        { status: 400 },
+      );
+    }
+    if (!/^\d+$/.test(body.amount) || !/^\d+$/.test(body.pricePerCredit)) {
+      return Response.json(
+        { error: "amount and pricePerCredit must be non-negative integer strings" },
+        { status: 400 },
+      );
+    }
+    const listing = await createCreditListing({
+      campaignId: body.campaignId,
+      seller: body.seller,
+      amount: body.amount,
+      pricePerCredit: body.pricePerCredit,
+      network: body.network,
+    });
+    return Response.json(listing, { status: 201 });
+  } catch {
+    return Response.json({ error: "Invalid JSON request body" }, { status: 400 });
+  }
+}
+
+async function postCreditPurchase(request: Request) {
+  try {
+    const body = await request.json() as {
+      listingId?: string;
+      buyer?: string;
+      amount?: string;
+      network?: "testnet" | "mainnet";
+    };
+    if (!body.listingId || !body.buyer || !body.amount) {
+      return Response.json(
+        { error: "listingId, buyer, and amount are required" },
+        { status: 400 },
+      );
+    }
+    if (!/^\d+$/.test(body.amount)) {
+      return Response.json({ error: "amount must be a non-negative integer string" }, { status: 400 });
+    }
+    const result = await purchaseCreditListing({
+      listingId: body.listingId,
+      buyer: body.buyer,
+      amount: body.amount,
+      network: body.network,
+    });
+    return Response.json(result, { status: 201 });
+  } catch {
+    return Response.json({ error: "Invalid JSON request body" }, { status: 400 });
+  }
+}
+
 export const GET = withCampaignApiRateLimit(getCampaigns);
 export const POST = withCampaignApiRateLimit(postCampaign);
+export const PUT = withCampaignApiRateLimit(postCreditListing);
+export const PATCH = withCampaignApiRateLimit(postCreditPurchase);
+export const OPTIONS = withCampaignApiRateLimit(getCreditListings);
