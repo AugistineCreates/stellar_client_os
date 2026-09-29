@@ -707,6 +707,10 @@ export async function createCampaign(input: {
   countries?: string[];
   region?: string;
   treeSpecies?: string;
+  /** GPS coordinates of the campaign's planting site(s), stored for the global
+   * planting map (campaign geolocation, v1). */
+  gpsLocations?: Array<{ latitude: number; longitude: number; capturedAt?: number }>;
+  treeCount?: number;
   durationMs?: number;
   deadline?: number;
   goalAmount: string;
@@ -725,12 +729,13 @@ export async function createCampaign(input: {
     countries: input.countries,
     region: input.region,
     treeSpecies: input.treeSpecies,
+    gpsLocations: input.gpsLocations,
+    treeCount: input.treeCount ?? 0,
     durationMs: input.deadline !== undefined ? input.deadline - now : input.durationMs,
     status: "DRAFT",
     goalAmount: input.goalAmount,
     raisedAmount: "0",
     sponsorCount: 0,
-    treeCount: 0,
     createdAt: now,
     updatedAt: now,
     statusChangedAt: now,
