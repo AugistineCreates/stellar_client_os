@@ -2,6 +2,7 @@ import { createCampaign, findDuplicateCampaigns, queryCampaigns } from "@/servic
 import { listCreditListings, createCreditListing, purchaseCreditListing } from "@/services/carbon-credit-market.service";
 import { autoTranslate, detectLanguage, SUPPORTED_TRANSLATION_LOCALES } from "@/lib/translation";
 import { withCampaignApiRateLimit } from "@/middlewares/rate-limit.middleware";
+import { UNDERREPRESENTED_CRITERIA } from "@/services/grant-program.service";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,9 @@ async function postCampaign(request: Request) {
       /** GPS coordinates of the planting site(s), validated and stored for the
        * global planting-locations map (campaign geolocation, v1). */
       gpsLocations?: Array<{ latitude: number; longitude: number }>;
+      /** Underrepresented-community tags qualifying the campaign for the
+       * platform's first-10% grant matching programs. */
+      underrepresentedTags?: string[];
       durationMs?: number;
       deadline?: number;
       goalAmount?: string;
@@ -85,6 +89,19 @@ async function postCampaign(request: Request) {
       ) {
         return Response.json(
           { error: "gpsLocations must be an array of { latitude, longitude } coordinates within range" },
+          { status: 400 },
+        );
+      }
+    }
+    if (body.underrepresentedTags !== undefined) {
+      if (
+        !Array.isArray(body.underrepresentedTags) ||
+        body.underrepresentedTags.some(
+          (tag) => typeof tag !== "string" || !(UNDERREPRESENTED_CRITERIA as readonly string[]).includes(tag),
+        )
+      ) {
+        return Response.json(
+          { error: "underrepresentedTags must be an array of valid grant eligibility criteria" },
           { status: 400 },
         );
       }
@@ -153,6 +170,7 @@ async function postCampaign(request: Request) {
       region: body.region,
       treeSpecies: body.treeSpecies,
       gpsLocations: body.gpsLocations,
+      underrepresentedTags: body.underrepresentedTags,
       durationMs,
       goalAmount: body.goalAmount,
       network: body.network,
