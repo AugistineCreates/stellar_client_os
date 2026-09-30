@@ -21,6 +21,11 @@ export type CampaignSortField =
 
 export type SortDirection = "ASC" | "DESC";
 
+export interface CampaignCoordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface SponsorRecord {
   id: string;
   campaignId: string;
@@ -76,6 +81,10 @@ export interface CampaignVerificationSummary {
   emailVerified: boolean;
   phoneVerified: boolean;
   addressVerified: boolean;
+  /** Backwards-compatible aliases used by older API consumers. */
+  verifiedEmail?: boolean;
+  verifiedPhone?: boolean;
+  verifiedAddress?: boolean;
   badges: string[];
   status: CampaignVerificationStatus;
   isVerified: boolean;
@@ -733,6 +742,15 @@ export async function createCampaign(input: {
   network?: "testnet" | "mainnet";
   nonprofitPartner?: Omit<CampaignNonprofitPartner, "verificationStatus" | "verifiedAt" | "verifiedBy">;
 }, dataSource = getCampaignDataSource(), now = Date.now()): Promise<CampaignRecord> {
+  if (input.coordinates !== undefined) {
+    const { latitude, longitude } = input.coordinates;
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+      throw new Error("coordinates.latitude must be between -90 and 90");
+    }
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+      throw new Error("coordinates.longitude must be between -180 and 180");
+    }
+  }
   const campaign: CampaignRecord = {
     id: input.id ?? crypto.randomUUID(),
     creator: input.creator,
