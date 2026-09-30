@@ -21,12 +21,69 @@ function noStore<T>(body: T, init?: ResponseInit): NextResponse<T> {
   });
 }
 
+type SustainabilityInputs = {
+  treeSpeciesDiversity?: number;
+  regionClimateImpact?: number;
+  soilHealthImprovement?: number;
+  biodiversityPotential?: number;
+};
+
+function clamp0100(value: number): number {
+  if (!Number.finite(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
+function normalizeInput(value: unknown): number {
+  if (typeof value === "number") return clamp0100(value);
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return clamp0100(parsed);
+  }
+  return 0;
+}
+
+export function calculateSustainabilityScore(inputs: SustainabilityInputs): number {
+  const treeSpeciesDiversity = normalizeInput(inputs.treeSpeciesDiversity);
+  const regionClimateImpact = normalizeInput(inputs.regionClimateImpact);
+  const soilHealthImprovement = normalizeInput(inputs.soilHealthImprovement);
+  const biodiversityPotential = normalizeInput(inputs.biodiversityPotential);
+
+  const weighted =
+    treeSpeciesDiversity * 0.3 +
+    regionClimateImpact * 0.25 +
+    soilHealthImprovement * 0.25 +
+    biodiversityPotential * 0.2;
+
+  return Math.round(clamp0100(weighted));
+}
+
+function extractSustainabilityInputs(analytics: unknown | null | undefined): SustainabilityInputs {
+  if (!analytics || typeof analytics !== "object") return {};
+  const candidate = analytics as Record<string, unknown>;
+  const source =
+    (candidate.sustainability as Record<string, unknown> | undefined) ?? candidate;
+  return {
+    treeSpeciesDiversity: normalizeInput(source.treeSpeciesDiversity),
+    regionClimateImpact: normalizeInput(source.regionClimateImpact),
+    soilHealthImprovement: normalizeInput(source.soilHealthImprovement),
+    biodiversityPotential: normalizeInput(source.biodiversityPotential),
+  };
+}
+
+function withSustainabilityScore<T>(analytics: T): T & { sustainabilityScore: number } {
+  const inputs = extractSustainabilityInputs(analytics);
+  const sustainabilityScore = calculateSustainabilityScore(inputs);
+  return { ...(analytics as object), sustainabilityScore } as T & { sustainabilityScore: number };
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const analytics = await getCampaignAnalytics((await params).id);
-  return analytics ? noStore({ data: analytics }) : noStore({ error: "Campaign not found" }, { status: 404 });
+  return analytics
+    ? noStore({ data: withSustainabilityScore(analytics) })
+    : noStore({ error: "Campaign not found" }, { status: 404 });
 }
 
 export async function POST(
@@ -59,7 +116,10 @@ export async function POST(
       return noStore({ error: "event must be view, contribution, refund, or credit_sale" }, { status: 400 });
     }
     const analytics = await getCampaignAnalytics(campaignId);
-    return noStore({ data: analytics }, { status: 201 });
+    return noStore(
+      { data: analytics ? withSustainabilityScore(analytics) : analytics },
+      { status: 201 },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid analytics event";
     return noStore({ error: message }, { status: message === "Campaign not found" ? 404 : 400 });
