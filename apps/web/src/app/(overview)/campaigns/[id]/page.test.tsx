@@ -97,20 +97,16 @@ describe("Campaign detail page — top backers tab", () => {
     expect(screen.getAllByRole("button", { name: /submit insurance claim/i })).toHaveLength(1);
   });
 
-  it("renders the sustainability score badge and dashboard card in the overview tab", () => {
-    renderPage();
+  it("embeds verification photos and video with capture, location, and verifier metadata", () => {
+    const { container } = renderPage();
 
-    // Sustainability score badge in the hero banner
-    const badges = screen.getAllByTestId("sustainability-score-badge");
-    expect(badges.length).toBeGreaterThan(0);
-
-    // Sustainability score card in overview tab
-    expect(screen.getByTestId("campaign-sustainability-card")).toBeTruthy();
-    expect(screen.getByText("Ecosystem Impact Rating")).toBeTruthy();
-    expect(screen.getByText("Tree Species Diversity")).toBeTruthy();
-    expect(screen.getByText("Regional Climate Impact")).toBeTruthy();
-    expect(screen.getByText("Soil Health Improvement")).toBeTruthy();
-    expect(screen.getByText("Biodiversity Potential")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Verification Media" })).toBeTruthy();
+    expect(screen.getByText("North canopy boundary")).toBeTruthy();
+    expect(screen.getAllByText("Rafael Nascimento")).toHaveLength(2);
+    expect(screen.getByText("-3.4653, -62.2159")).toBeTruthy();
+    expect(screen.getByText("Sep 14, 2026, 9:42 AM UTC")).toBeTruthy();
+    expect(container.querySelector("video[controls]")).toBeTruthy();
+    expect(container.querySelectorAll('a[href*="openstreetmap.org"]')).toHaveLength(3);
   });
 });
 
