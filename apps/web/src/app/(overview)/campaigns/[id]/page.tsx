@@ -36,6 +36,7 @@ import { CampaignFundingVelocityChart } from "@/components/modules/campaign/Fund
 import { CampaignFollow } from "@/components/modules/campaign/CampaignFollow";
 import { VerificationMediaGallery, type VerificationMediaItem } from "@/components/modules/campaign/VerificationMediaGallery";
 import { CO2SequestrationProjection } from "@/components/modules/dashboard/CO2SequestrationProjection";
+import { CampaignSustainabilityScore } from "@/components/modules/campaign/sustainability/CampaignSustainabilityScore";
 
 const translations = {
   es: {
@@ -142,6 +143,12 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
     co2OffsetTons: "150",
     treeType: "Oak",
     location: "Amazon Basin, Brazil",
+    sustainability: {
+      treeSpeciesDiversity: 82,
+      regionClimateImpact: 74,
+      soilHealthImprovement: 68,
+      biodiversityPotential: 88,
+    },
     successStory: {
       headline: "From Rainforest Pledge to On-the-Ground Impact",
       creatorInterview: "Every XLM stream is tied to verifiable patrol hours and backers receive monthly GPS updates. The team shipped on every promise.",
@@ -350,6 +357,14 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
       </div>
+
+      {/* Campaign Sustainability Score - Environmental Index */}
+      <CampaignSustainabilityScore
+        treeSpeciesDiversity={campaign.sustainability.treeSpeciesDiversity}
+        regionClimateImpact={campaign.sustainability.regionClimateImpact}
+        soilHealthImprovement={campaign.sustainability.soilHealthImprovement}
+        biodiversityPotential={campaign.sustainability.biodiversityPotential}
+      />
 
       {/* Funding Milestone Achievement Badges (25%, 50%, 75%, 100%) */}
       <CampaignMilestones
