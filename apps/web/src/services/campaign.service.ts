@@ -3,6 +3,7 @@ import type { VerificationAuditEntry, VerificationEvidence } from "@/types/campa
 import { EmailService, type SendEmailOptions } from "./email.service";
 import { CampaignWebhookService } from "./campaign-webhook.service";
 import { pushNotificationService } from "./push-notification.service";
+import { campaignImpactNftService } from "./campaign-impact-nft.service";
 import type { CampaignWebhookEvent } from "@/types/webhook";
 import type { CampaignLocalizedContent } from "@/lib/translation";
 
@@ -720,9 +721,15 @@ export async function createCampaign(input: {
   countries?: string[];
   region?: string;
   treeSpecies?: string;
+  species?: string;
+  treeCount?: number;
+  co2SequestrationKg?: string;
   durationMs?: number;
   deadline?: number;
   goalAmount: string;
+  raisedAmount?: string;
+  sponsorCount?: number;
+  sponsors?: SponsorRecord[];
   network?: "testnet" | "mainnet";
   nonprofitPartner?: Omit<CampaignNonprofitPartner, "verificationStatus" | "verifiedAt" | "verifiedBy">;
 }, dataSource = getCampaignDataSource(), now = Date.now()): Promise<CampaignRecord> {
@@ -739,17 +746,19 @@ export async function createCampaign(input: {
     countries: input.countries,
     region: input.region,
     treeSpecies: input.treeSpecies,
+    species: input.species,
     durationMs: input.deadline !== undefined ? input.deadline - now : input.durationMs,
     status: "DRAFT",
     goalAmount: input.goalAmount,
-    raisedAmount: "0",
-    sponsorCount: 0,
-    treeCount: 0,
+    raisedAmount: input.raisedAmount ?? "0",
+    sponsorCount: input.sponsorCount ?? (input.sponsors ? input.sponsors.length : 0),
+    treeCount: input.treeCount ?? 0,
+    co2SequestrationKg: input.co2SequestrationKg,
     createdAt: now,
     updatedAt: now,
     statusChangedAt: now,
     network: input.network,
-    sponsors: [],
+    sponsors: input.sponsors ?? [],
     nonprofitPartner: input.nonprofitPartner
       ? { ...input.nonprofitPartner, verificationStatus: "PENDING" }
       : undefined,
@@ -949,8 +958,11 @@ export async function transitionCampaignStatus(
     }).catch((error) => {
       console.error(`[Campaign webhook] Failed to dispatch completion for ${campaign.id}:`, error);
     });
+
+    void campaignImpactNftService.mintCampaignCompletionNFT(campaign.id, { dataSource }).catch((error) => {
+      console.error(`[Impact NFT] Failed to auto-mint completion NFT for ${campaign.id}:`, error);
+    });
   }
-  return saved;
 
   if (campaign.sponsorCount > 0) {
     if (campaign.status === "PENDING_VERIFICATION" && toStatus === "ACTIVE") {
@@ -960,7 +972,7 @@ export async function transitionCampaignStatus(
     }
   }
 
-  return dataSource.saveCampaign(next);
+  return saved;
 }
 
 export async function submitCampaignInsuranceClaim(
