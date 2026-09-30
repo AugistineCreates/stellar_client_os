@@ -37,6 +37,7 @@ import { CampaignFollow } from "@/components/modules/campaign/CampaignFollow";
 import { VerificationMediaGallery, type VerificationMediaItem } from "@/components/modules/campaign/VerificationMediaGallery";
 import { CO2SequestrationProjection } from "@/components/modules/dashboard/CO2SequestrationProjection";
 import { CampaignSustainabilityScore } from "@/components/modules/campaign/sustainability/CampaignSustainabilityScore";
+import { OneTimeDonationButton } from "@/components/modules/campaign/donation/OneTimeDonationButton";
 
 const translations = {
   es: {
@@ -211,6 +212,7 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
               <Heart className="mr-1.5 h-3.5 w-3.5" /> Donate
             </Button>
           </Link>
+          <OneTimeDonationButton campaignId={campaign.id} campaignName={campaign.title} />
           <Link href="/campaigns/create">
             <Button size="sm" variant="outline" className="border-purple-600/40 text-purple-300 hover:bg-purple-950/40 text-xs">
               <Edit className="mr-1.5 h-3.5 w-3.5" /> Edit Campaign
