@@ -3,7 +3,7 @@ import { queryCampaigns } from "@/services/campaign.service";
 import {
   getCampaignPlantingSites,
   summarizePlantingSites,
-  type PlantingSite,
+  type CampaignPlantingSite,
 } from "@/services/campaign-geolocation.service";
 
 export const runtime = "nodejs";
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       network: network ?? undefined,
     });
 
-    const sites: PlantingSite[] = getCampaignPlantingSites(campaigns);
+    const sites: CampaignPlantingSite[] = getCampaignPlantingSites(campaigns);
     const stats = summarizePlantingSites(sites);
 
     return NextResponse.json({

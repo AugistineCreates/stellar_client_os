@@ -5,12 +5,12 @@ import Link from "next/link";
 import { ArrowLeft, MapPin, Trees, Layers } from "lucide-react";
 import { PlantingSitesMap } from "@/components/modules/campaign/geolocation/PlantingSitesMap";
 import type {
-  PlantingSite,
+  CampaignPlantingSite,
   PlantingSitesStats,
 } from "@/services/campaign-geolocation.service";
 
 export default function PlantingSitesPage() {
-  const [sites, setSites] = useState<PlantingSite[]>([]);
+  const [sites, setSites] = useState<CampaignPlantingSite[]>([]);
   const [stats, setStats] = useState<PlantingSitesStats | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

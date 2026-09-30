@@ -1,13 +1,21 @@
 /**
  * Campaign Geolocation Service — campaign geolocation, map all planting sites (v1)
  *
- * Turns the GPS coordinates stored on each campaign (`CampaignRecord.gpsLocations`)
- * into map-ready planting sites, so the UI can render every active planting
- * location on a global interactive map with tree counts and a species breakdown.
+ * Two complementary APIs live in this module:
  *
- * The service is a pure function layer over `CampaignRecord` — campaigns in,
- * planting sites out — which keeps it trivially testable and independent of
- * any particular data source (in-memory, API, or contract).
+ *  1. `CampaignGeolocationService` (merged from upstream, issue #853) — pure
+ *     geometry helpers over `PlantingSite[]`: bounding-box filtering, GeoJSON
+ *     export for interactive maps, and regional tree totals.
+ *
+ *  2. The functional API below — turns the GPS coordinates stored on each
+ *     campaign (`CampaignRecord.gpsLocations`) into map-ready
+ *     `CampaignPlantingSite`s, so the UI can render every active planting
+ *     location on a global interactive map with tree counts and a species
+ *     breakdown.
+ *
+ * The functional layer is a pure function layer over `CampaignRecord` —
+ * campaigns in, planting sites out — which keeps it trivially testable and
+ * independent of any particular data source (in-memory, API, or contract).
  *
  * @example
  * import { getActivePlantingSites } from "@/services/campaign-geolocation.service";
@@ -35,8 +43,8 @@ export const LONGITUDE_MIN = -180;
 /** Longitude range guard used when validating coordinates. */
 export const LONGITUDE_MAX = 180;
 
-/** One point on the interactive planting map. */
-export interface PlantingSite {
+/** One point on the interactive planting map, derived from `CampaignRecord`. */
+export interface CampaignPlantingSite {
   /** Stable map-marker key, e.g. `camp-101:site-0`. */
   id: string;
   campaignId: string;
@@ -143,8 +151,8 @@ export function isValidGpsPoint(point: unknown): point is CampaignGpsPoint {
  */
 export function getCampaignPlantingSites(
   campaigns: CampaignRecord[],
-): PlantingSite[] {
-  const sites: PlantingSite[] = [];
+): CampaignPlantingSite[] {
+  const sites: CampaignPlantingSite[] = [];
   for (const campaign of campaigns) {
     const points = (campaign.gpsLocations ?? []).filter(isValidGpsPoint);
     if (points.length === 0) continue;
@@ -175,14 +183,14 @@ export function getCampaignPlantingSites(
 /** Restrict planting sites to campaigns whose lifecycle status is `ACTIVE`. */
 export function getActivePlantingSites(
   campaigns: CampaignRecord[],
-): PlantingSite[] {
+): CampaignPlantingSite[] {
   return getCampaignPlantingSites(
     campaigns.filter((campaign) => campaign.status === "ACTIVE"),
   );
 }
 
 /** Count sites per region, most-common first. */
-export function countSitesByRegion(sites: PlantingSite[]): Array<{ region: string; count: number }> {
+export function countSitesByRegion(sites: CampaignPlantingSite[]): Array<{ region: string; count: number }> {
   const counts = new Map<string, number>();
   for (const site of sites) {
     const region = site.region?.trim() || "Unknown";
@@ -194,7 +202,7 @@ export function countSitesByRegion(sites: PlantingSite[]): Array<{ region: strin
 }
 
 /** Count planted trees per species across the given sites, most-common first. */
-export function countTreesBySpecies(sites: PlantingSite[]): Array<{ species: string; count: number }> {
+export function countTreesBySpecies(sites: CampaignPlantingSite[]): Array<{ species: string; count: number }> {
   const counts = new Map<string, number>();
   for (const site of sites) {
     if (site.species.length === 0) {
@@ -211,7 +219,7 @@ export function countTreesBySpecies(sites: PlantingSite[]): Array<{ species: str
 }
 
 /** Summarize a set of planting sites for the map's stats header. */
-export function summarizePlantingSites(sites: PlantingSite[]): PlantingSitesStats {
+export function summarizePlantingSites(sites: CampaignPlantingSite[]): PlantingSitesStats {
   const campaignIds = new Set(sites.map((site) => site.campaignId));
   return {
     totalSites: sites.length,
@@ -220,4 +228,96 @@ export function summarizePlantingSites(sites: PlantingSite[]): PlantingSitesStat
     speciesCounts: countTreesBySpecies(sites),
     regions: countSitesByRegion(sites),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Upstream CampaignGeolocationService (issue #853) — geometry helpers over
+// `PlantingSite[]` (bounding-box filtering, GeoJSON export, regional totals).
+// ---------------------------------------------------------------------------
+
+export interface PlantingSite {
+  id: string;
+  campaignId: number;
+  latitude: number;
+  longitude: number;
+  region: string;
+  species: string[];
+  treesPlanted: number;
+  plantedAt: Date;
+  verificationStatus: 'verified' | 'pending' | 'rejected';
+}
+
+export interface GeoJSONFeature {
+  type: 'Feature';
+  geometry: {
+    type: 'Point';
+    coordinates: [number, number]; // [longitude, latitude]
+  };
+  properties: {
+    id: string;
+    campaignId: number;
+    region: string;
+    species: string[];
+    treesPlanted: number;
+    status: string;
+  };
+}
+
+export interface GeoJSONFeatureCollection {
+  type: 'FeatureCollection';
+  features: GeoJSONFeature[];
+}
+
+export class CampaignGeolocationService {
+  /**
+   * Filter planting sites within a bounding box.
+   */
+  static getSitesInBounds(
+    sites: PlantingSite[],
+    minLat: number,
+    maxLat: number,
+    minLng: number,
+    maxLng: number
+  ): PlantingSite[] {
+    return sites.filter(
+      (s) =>
+        s.latitude >= minLat &&
+        s.latitude <= maxLat &&
+        s.longitude >= minLng &&
+        s.longitude <= maxLng
+    );
+  }
+
+  /**
+   * Convert planting sites to standard GeoJSON FeatureCollection for interactive maps.
+   */
+  static toGeoJSON(sites: PlantingSite[]): GeoJSONFeatureCollection {
+    return {
+      type: 'FeatureCollection',
+      features: sites.map((s) => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [s.longitude, s.latitude],
+        },
+        properties: {
+          id: s.id,
+          campaignId: s.campaignId,
+          region: s.region,
+          species: s.species,
+          treesPlanted: s.treesPlanted,
+          status: s.verificationStatus,
+        },
+      })),
+    };
+  }
+
+  /**
+   * Calculate total trees planted across a geographic region.
+   */
+  static calculateRegionalTotal(sites: PlantingSite[], region: string): number {
+    return sites
+      .filter((s) => s.region.toLowerCase() === region.toLowerCase())
+      .reduce((acc, s) => acc + s.treesPlanted, 0);
+  }
 }

@@ -1,6 +1,15 @@
 import { createCampaign, findDuplicateCampaigns, queryCampaigns } from "@/services/campaign.service";
 import { listCreditListings, createCreditListing, purchaseCreditListing } from "@/services/carbon-credit-market.service";
-import { autoTranslate, detectLanguage, SUPPORTED_TRANSLATION_LOCALES } from "@/lib/translation";
+import {
+  detectLanguage,
+  isSupportedTranslationLocale,
+  localizeCampaign,
+  localeFromAcceptLanguage,
+  normalizeTranslationLocale,
+  SUPPORTED_TRANSLATION_LOCALES,
+  validateDescriptionTranslations,
+  validateLocalizedContentMap,
+} from "@/lib/translation";
 import { withCampaignApiRateLimit } from "@/middlewares/rate-limit.middleware";
 import { UNDERREPRESENTED_CRITERIA } from "@/services/grant-program.service";
 
@@ -8,9 +17,17 @@ export const runtime = "nodejs";
 
 async function getCampaigns(request: Request) {
   const url = new URL(request.url);
+  const hasLanguageParameter = url.searchParams.has("language");
+  const requestedLanguage = hasLanguageParameter
+    ? normalizeTranslationLocale(url.searchParams.get("language") ?? "")
+    : localeFromAcceptLanguage(request.headers.get("accept-language"));
+  if (hasLanguageParameter && !requestedLanguage) {
+    return Response.json({ error: "Unsupported or invalid language code", supportedLanguages: SUPPORTED_TRANSLATION_LOCALES }, { status: 400 });
+  }
   const status = url.searchParams.get("status") as never;
   const creator = url.searchParams.get("creator") ?? undefined;
   const search = url.searchParams.get("search") ?? undefined;
+  const includeStats = url.searchParams.get("includeStats") === "true";
   const limit = Number(url.searchParams.get("limit") ?? 20);
   const offset = Number(url.searchParams.get("offset") ?? 0);
   const campaigns = await queryCampaigns({
@@ -20,7 +37,26 @@ async function getCampaigns(request: Request) {
     offset: Number.isFinite(offset) ? offset : 0,
     network: (url.searchParams.get("network") as "testnet" | "mainnet" | null) ?? undefined,
   });
-  return Response.json({ data: campaigns, pagination: { limit, offset, count: campaigns.length } });
+  const responseCampaigns = requestedLanguage
+    ? campaigns.map((campaign) => localizeCampaign(campaign, requestedLanguage))
+    : campaigns;
+  if (includeStats && creator) {
+    const totalTrees = responseCampaigns.reduce((sum, campaign) => sum + (Number(campaign.treesPlanted) || 0), 0);
+    const totalSponsors = responseCampaigns.reduce((sum, campaign) => sum + (Number(campaign.sponsorCount) || 0), 0);
+    const totalCo2 = responseCampaigns.reduce((sum, campaign) => sum + (Number(campaign.co2Sequestered) || 0), 0);
+    return Response.json({
+      data: responseCampaigns,
+      pagination: { limit, offset, count: responseCampaigns.length },
+      stats: {
+        totalCampaigns: campaigns.length,
+        totalTrees,
+        totalSponsors,
+        totalCo2,
+        profileUrl: `/creators/${encodeURIComponent(creator)}`,
+      },
+    });
+  }
+  return Response.json({ data: responseCampaigns, pagination: { limit, offset, count: responseCampaigns.length } });
 }
 
 async function postCampaign(request: Request) {
@@ -46,6 +82,7 @@ async function postCampaign(request: Request) {
       network?: "testnet" | "mainnet";
       language?: string;
       translations?: Record<string, string>;
+      localizedContent?: Record<string, { name?: string; title?: string; description?: string; location?: string; treeSpecies?: string; region?: string }>;
       autoTranslate?: boolean;
       nonprofitPartner?: {
         legalName?: unknown;
@@ -53,6 +90,9 @@ async function postCampaign(request: Request) {
         country?: unknown;
       };
     };
+    if (body.autoTranslate) {
+      return Response.json({ error: "Automatic translation is not configured; provide reviewed translations instead" }, { status: 501 });
+    }
     if (!body.creator || !body.name || !body.goalAmount) {
       return Response.json({ error: "creator, name, and goalAmount are required" }, { status: 400 });
     }
@@ -61,6 +101,15 @@ async function postCampaign(request: Request) {
     }
     if (body.location !== undefined && typeof body.location !== "string") {
       return Response.json({ error: "location must be a string" }, { status: 400 });
+    }
+    if (body.language !== undefined && !isSupportedTranslationLocale(body.language)) {
+      return Response.json({ error: "language must be a supported ISO 639-1 code", supportedLanguages: SUPPORTED_TRANSLATION_LOCALES }, { status: 400 });
+    }
+    if (body.translations !== undefined && !validateDescriptionTranslations(body.translations)) {
+      return Response.json({ error: "translations must map supported language codes to non-empty descriptions" }, { status: 400 });
+    }
+    if (body.localizedContent !== undefined && !validateLocalizedContentMap(body.localizedContent)) {
+      return Response.json({ error: "localizedContent must map supported language codes to non-empty campaign fields" }, { status: 400 });
     }
     if (body.countries !== undefined && (!Array.isArray(body.countries) || body.countries.some((c) => typeof c !== "string"))) {
       return Response.json({ error: "countries must be an array of strings" }, { status: 400 });
@@ -149,16 +198,9 @@ async function postCampaign(request: Request) {
       );
     }
 
-    // Language detection and auto-translation
+    // Language detection is metadata only; translations are supplied explicitly.
     const description = body.description ?? "";
-    const language = body.language ?? detectLanguage(description);
-    let translations = body.translations ?? {};
-    if (body.autoTranslate) {
-      translations = {
-        ...autoTranslate(description, SUPPORTED_TRANSLATION_LOCALES),
-        ...translations,
-      };
-    }
+    const language = body.language ? normalizeTranslationLocale(body.language)! : detectLanguage(description);
 
     const campaign = await createCampaign({
       creator: body.creator,
@@ -176,7 +218,8 @@ async function postCampaign(request: Request) {
       network: body.network,
       nonprofitPartner,
       language,
-      translations,
+      translations: body.translations,
+      localizedContent: body.localizedContent,
     });
     return Response.json(campaign, { status: 201 });
   } catch {

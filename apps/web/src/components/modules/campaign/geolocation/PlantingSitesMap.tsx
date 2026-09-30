@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-import type { PlantingSite, PlantingSitesStats } from "@/services/campaign-geolocation.service";
+import type { CampaignPlantingSite, PlantingSitesStats } from "@/services/campaign-geolocation.service";
 
 const PlantingSitesMapView = dynamic(
   () => import("./PlantingSitesMapView").then((mod) => mod.PlantingSitesMapView),
@@ -93,7 +93,7 @@ function SpeciesLegend({
 }
 
 export interface PlantingSitesMapProps {
-  sites: PlantingSite[];
+  sites: CampaignPlantingSite[];
   stats?: PlantingSitesStats;
   className?: string;
   isLoading?: boolean;

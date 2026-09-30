@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import type { PlantingSite } from "@/services/campaign-geolocation.service";
+import type { CampaignPlantingSite } from "@/services/campaign-geolocation.service";
 
 const TILE_URL = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
 const TILE_ATTRIBUTION =
@@ -22,7 +22,7 @@ function colorForSpeciesCount(species: string[]): string {
   return SITE_COLORS[Math.max(0, count - 1) % SITE_COLORS.length];
 }
 
-function MapUpdater({ sites }: { sites: PlantingSite[] }) {
+function MapUpdater({ sites }: { sites: CampaignPlantingSite[] }) {
   const map = useMap();
 
   useEffect(() => {
@@ -40,7 +40,7 @@ function MapUpdater({ sites }: { sites: PlantingSite[] }) {
   return null;
 }
 
-function SitePopup({ site }: { site: PlantingSite }) {
+function SitePopup({ site }: { site: CampaignPlantingSite }) {
   const formattedTrees = site.treeCount.toLocaleString();
 
   return (
@@ -86,7 +86,7 @@ function SitePopup({ site }: { site: PlantingSite }) {
   );
 }
 
-function SiteMarker({ site }: { site: PlantingSite }) {
+function SiteMarker({ site }: { site: CampaignPlantingSite }) {
   const pathOptions = useMemo(
     () => ({
       color: colorForSpeciesCount(site.species),
@@ -115,7 +115,7 @@ function SiteMarker({ site }: { site: PlantingSite }) {
 }
 
 export interface PlantingSitesMapViewProps {
-  sites: PlantingSite[];
+  sites: CampaignPlantingSite[];
   className?: string;
   isLoading?: boolean;
 }
