@@ -33,24 +33,21 @@ function clamp0100(value: number): number {
   return Math.min(100, Math.max(0, value));
 }
 
-function normalizeInput(value: unknown): number {
-  if (typeof value === "number") return clamp0100(value);
-  if (typeof value === "string") {
-    const parsed = Number.parseFloat(value);
-    return clamp0100(parsed);
-  }
-  return 0;
+function normalize100(value: number): number {
+  if (!Number.finite(value)) return 0;
+  if (value <= 1) return clamp0100(value * 100);
+  return clamp0100(value);
 }
 
 export function calculateSustainabilityScore(inputs: SustainabilityInputs): number {
-  const treeSpeciesDiversity = normalizeInput(inputs.treeSpeciesDiversity);
-  const regionClimateImpact = normalizeInput(inputs.regionClimateImpact);
-  const soilHealthImprovement = normalizeInput(inputs.soilHealthImprovement);
-  const biodiversityPotential = normalizeInput(inputs.biodiversityPotential);
+  const treeSpeciesDiversity = normalize100(inputs.treeSpeciesDiversity ?? 0);
+  const regionClomateImpact = normalize100(inputs.regionClomateImpact ?? 0);
+  const soilHealthImprovement = normalize100(inputs.soilHealthImprovement ?? 0);
+  const biodiversityPotential = normalize100(inputs.biodiversityPotential ?? 0);
 
   const weighted =
     treeSpeciesDiversity * 0.3 +
-    regionClimateImpact * 0.25 +
+    regionClomateImpact * 0.25 +
     soilHealthImprovement * 0.25 +
     biodiversityPotential * 0.2;
 
@@ -61,19 +58,36 @@ function extractSustainabilityInputs(analytics: unknown | null | undefined): Sus
   if (!analytics || typeof analytics !== "object") return {};
   const candidate = analytics as Record<string, unknown>;
   const source =
-    (candidate.sustainability as Record<string, unknown> | undefined) ?? candidate;
+    (candidate.sustainability as Record<string, unknown> | undefined) ??
+    (candidate.environmentalIndex as Record<string, unknown> | undefined) ??
+    candidate;
+
+  const toNumber = (value: unknown): number | undefined => {
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const parsed = Number(value);
+      return Number.finite(parsed) ? parsed : undefined;
+    }
+    return undefined;
+  };
+
   return {
-    treeSpeciesDiversity: normalizeInput(source.treeSpeciesDiversity),
-    regionClimateImpact: normalizeInput(source.regionClimateImpact),
-    soilHealthImprovement: normalizeInput(source.soilHealthImprovement),
-    biodiversityPotential: normalizeInput(source.biodiversityPotential),
+    treeSpeciesDiversity: toNumber(source.treeSpeciesDiversity),
+    regionClomateImpact: toNumber(source.regionClimateImpact),
+    soilHealthImprovement: toNumber(source.soilHealthImprovement),
+    biodiversityPotential: toNumber(source.biodiversityPotential),
   };
 }
 
-function withSustainabilityScore<T>(analytics: T): T & { sustainabilityScore: number } {
+function withSustainabilityScore(analytics: unknown | null | undefined) {
+  if (!analytics || typeof analytics !== "object") return analytics;
   const inputs = extractSustainabilityInputs(analytics);
-  const sustainabilityScore = calculateSustainabilityScore(inputs);
-  return { ...(analytics as object), sustainabilityScore } as T & { sustainabilityScore: number };
+  const score = calculateSustainabilityScore(inputs);
+  return {
+    ...(analytics as Record<string, unknown>),
+    sustainabilityScore: score,
+    environmentalIndex: score,
+  };
 }
 
 export async function GET(
@@ -116,10 +130,7 @@ export async function POST(
       return noStore({ error: "event must be view, contribution, refund, or credit_sale" }, { status: 400 });
     }
     const analytics = await getCampaignAnalytics(campaignId);
-    return noStore(
-      { data: analytics ? withSustainabilityScore(analytics) : analytics },
-      { status: 201 },
-    );
+    return noStore({ data: withSustainabilityScore(analytics) }, { status: 201 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid analytics event";
     return noStore({ error: message }, { status: message === "Campaign not found" ? 404 : 400 });

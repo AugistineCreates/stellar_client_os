@@ -17,7 +17,6 @@ import {
   AlertTriangle,
   Crown,
   TreePine,
-  Leaf,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +36,7 @@ import { CampaignFundingVelocityChart } from "@/components/modules/campaign/Fund
 import { CampaignFollow } from "@/components/modules/campaign/CampaignFollow";
 import { VerificationMediaGallery, type VerificationMediaItem } from "@/components/modules/campaign/VerificationMediaGallery";
 import { CO2SequestrationProjection } from "@/components/modules/dashboard/CO2SequestrationProjection";
+import { CampaignSustainabilityScore } from "@/components/modules/campaign/sustainability/CampaignSustainabilityScore";
 
 const translations = {
   es: {
@@ -117,37 +117,6 @@ const detectLanguage = (text: string): string => {
   return "en";
 };
 
-type SustainabilityInputs = {
-  treeSpeciesDiversity: number;
-  regionClimateImpact: number;
-  soilHealthImprovement: number;
-  biodiversityPotential: number;
-};
-
-const SUSTAINABILITY_WEIGHTS: Record<keyof SustainabilityInputs, number> = {
-  treeSpeciesDiversity: 0.3,
-  regionClimateImpact: 0.25,
-  soilHealthImprovement: 0.2,
-  biodiversityPotential: 0.25,
-};
-
-const clampScore = (value: number): number => Math.max(0, Math.min(100, value));
-
-const calculateSustainabilityScore = (inputs: SustainabilityInputs): number => {
-  const weighted = (Object.keys(SUSTAINABILITY_WEIGHTS) as (keyof SustainabilityInputs)[]).reduce(
-    (total, key) => total + clampScore(inputs[key]) * SUSTAINABILITY_WEIGHTS[key],
-    0,
-  );
-  return Math.round(clampScore(weighted));
-};
-
-const getSustainabilityTier = (score: number): { label: string; className: string } => {
-  if (score >= 80) return { label: "Excellent", className: "text-emerald-400 border-emerald-600/50 bg-emerald-950/30" };
-  if (score >= 60) return { label: "Strong", className: "text-teal-400 border-teal-600/50 bg-teal-950/30" };
-  if (score >= 40) return { label: "Moderate", className: "text-amber-400 border-amber-600/50 bg-amber-950/30" };
-  return { label: "Developing", className: "text-rose-400 border-rose-600/50 bg-rose-950/30" };
-};
-
 export default function CampaignDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [activeTab, setActiveTab] = useState("overview");
@@ -174,6 +143,12 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
     co2OffsetTons: "150",
     treeType: "Oak",
     location: "Amazon Basin, Brazil",
+    sustainability: {
+      treeSpeciesDiversity: 82,
+      regionClimateImpact: 74,
+      soilHealthImprovement: 68,
+      biodiversityPotential: 88,
+    },
     successStory: {
       headline: "From Rainforest Pledge to On-the-Ground Impact",
       creatorInterview: "Every XLM stream is tied to verifiable patrol hours and backers receive monthly GPS updates. The team shipped on every promise.",
@@ -185,15 +160,6 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
     },
     treesPlanted: "1,500",
   };
-
-  const sustainabilityInputs: SustainabilityInputs = {
-    treeSpeciesDiversity: 82,
-    regionClimateImpact: 74,
-    soilHealthImprovement: 68,
-    biodiversityPotential: 88,
-  };
-  const sustainabilityScore = calculateSustainabilityScore(sustainabilityInputs);
-  const sustainabilityTier = getSustainabilityTier(sustainabilityScore);
 
   // The mock detail page renders as the campaign creator, so creator-only
   // controls (featuring backers, managing community spaces) are exercised.
@@ -392,6 +358,14 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
+      {/* Campaign Sustainability Score - Environmental Index */}
+      <CampaignSustainabilityScore
+        treeSpeciesDiversity={campaign.sustainability.treeSpeciesDiversity}
+        regionClimateImpact={campaign.sustainability.regionClimateImpact}
+        soilHealthImprovement={campaign.sustainability.soilHealthImprovement}
+        biodiversityPotential={campaign.sustainability.biodiversityPotential}
+      />
+
       {/* Funding Milestone Achievement Badges (25%, 50%, 75%, 100%) */}
       <CampaignMilestones
         raisedAmount={campaign.raisedAmount}
@@ -467,56 +441,6 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                     <TreePine className="mr-1.5 h-3.5 w-3.5 text-emerald-400" /> Visualize {campaign.treesPlanted} Planted Trees in AR (5-20yr)
                   </Button>
                 </div>
-              </div>
-
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
-                    <Leaf className="h-5 w-5 text-emerald-400" /> Sustainability Score
-                  </h3>
-                  <Badge variant="outline" className={`text-xs font-semibold ${sustainabilityTier.className}`}>
-                    {sustainabilityTier.label}
-                  </Badge>
-                </div>
-
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-black text-zinc-50">{sustainabilityScore}</span>
-                  <span className="text-sm text-zinc-500">/ 100 environmental index</span>
-                </div>
-
-                <div
-                  role="progressbar"
-                  aria-valuenow={sustainabilityScore}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-label="Campaign sustainability score"
-                  aria-valuetext={`${sustainabilityScore} out of 100 environmental index`}
-                  className="h-2 w-full overflow-hidden rounded-full bg-zinc-800"
-                >
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-lime-400 transition-all duration-500"
-                    style={{ width: `${sustainabilityScore}%` }}
-                  />
-                </div>
-
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                    <dt className="text-zinc-400">Tree Species Diversity</dt>
-                    <dd className="mt-1 text-sm font-bold text-zinc-100">{sustainabilityInputs.treeSpeciesDiversity}/100</dd>
-                  </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                    <dt className="text-zinc-400">Region Climate Impact</dt>
-                    <dd className="mt-1 text-sm font-bold text-zinc-100">{sustainabilityInputs.regionClimateImpact}/100</dd>
-                  </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                    <dt className="text-zinc-400">Soil Health Improvement</dt>
-                    <dd className="mt-1 text-sm font-bold text-zinc-100">{sustainabilityInputs.soilHealthImprovement}/100</dd>
-                  </div>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                    <dt className="text-zinc-400">Biodiversity Potential</dt>
-                    <dd className="mt-1 text-sm font-bold text-zinc-100">{sustainabilityInputs.biodiversityPotential}/100</dd>
-                  </div>
-                </dl>
               </div>
 
               <VerificationMediaGallery items={verificationMedia} />
