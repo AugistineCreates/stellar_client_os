@@ -10,11 +10,11 @@ members = [
     "verifier-penalty",
     "planter",
     "dispute-arbiter",
-    "donor-verification",
     "timelock",
     "upgrade-proxy",
     "sponsor-crowdfunding",
     "sponsor-insurance",
+    "campaign-diversity",
 ]
 
 [workspace.package]
