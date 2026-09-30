@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Animated,
   FlatList,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -22,6 +23,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as Notifications from "expo-notifications";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -52,7 +54,22 @@ type WsMessage =
   | { type: "campaign_update"; payload: Partial<CampaignDetail> }
   | { type: "tree_planted";    payload: { treeCount: number } }
   | { type: "new_sponsor";     payload: Sponsor }
+  | { type: "milestone";       payload: CampaignMilestone }
   | { type: "ping" };
+
+export type CampaignMilestoneType =
+  | "trees_planted"
+  | "verification_complete"
+  | "campaign_finished"
+  | "impact_achieved";
+
+export interface CampaignMilestone {
+  type: CampaignMilestoneType;
+  title: string;
+  body: string;
+  /** Optional numeric value associated with the milestone (e.g. tree count). */
+  value?: number;
+}
 
 // ── State / reducer ───────────────────────────────────────────────────────────
 
@@ -68,7 +85,8 @@ type Action =
   | { type: "WS_DISCONNECTED" }
   | { type: "CAMPAIGN_UPDATE"; patch: Partial<CampaignDetail> }
   | { type: "TREE_PLANTED";    treeCount: number }
-  | { type: "NEW_SPONSOR";     sponsor: Sponsor };
+  | { type: "NEW_SPONSOR";     sponsor: Sponsor }
+  | { type: "MILESTONE";       milestone: CampaignMilestone };
 
 function reducer(state: ScreenState, action: Action): ScreenState {
   switch (action.type) {
@@ -111,6 +129,10 @@ function reducer(state: ScreenState, action: Action): ScreenState {
       };
     }
 
+    case "MILESTONE":
+      // Milestones are surfaced as push notifications; no state change needed.
+      return state;
+
     default:
       return state;
   }
@@ -121,6 +143,78 @@ function reducer(state: ScreenState, action: Action): ScreenState {
 function shortAddress(address: string): string {
   if (address.length <= 12) return address;
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
+}
+
+// ── Push notifications ────────────────────────────────────────────────────────
+
+/**
+ * Configure the notification handler once at module load so that milestone
+ * notifications are displayed while the app is foregrounded.
+ */
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+/**
+ * Request notification permissions and register a push token with the backend.
+ * Returns the Expo push token when granted, otherwise `null`.
+ */
+async function registerForPushNotifications(
+  apiBaseUrl: string,
+  campaignId: string,
+): Promise<string | null> {
+  try {
+    const existing = await Notifications.getPermissionsAsync();
+    let status = existing.status;
+    if (status !== "granted") {
+      const requested = await Notifications.requestPermissionsAsync();
+      status = requested.status;
+    }
+    if (status !== "granted") return null;
+
+    const tokenResponse = await Notifications.getExpoPushTokenAsync();
+    const token = tokenResponse.data;
+
+    // Best-effort registration; failures must not break the screen.
+    try {
+      await fetch(`${apiBaseUrl}/api/campaigns/${campaignId}/push-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, platform: Platform.OS }),
+      });
+    } catch {
+      // ignore network errors during registration
+    }
+
+    return token;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Present a local push notification for a campaign milestone.
+ */
+async function presentMilestoneNotification(
+  milestone: CampaignMilestone,
+): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: milestone.title,
+        body: milestone.body,
+        data: { type: milestone.type, value: milestone.value ?? null },
+        sound: true,
+      },
+      trigger: null,
+    });
+  } catch {
+    // Notification failures should never crash the screen.
+  }
 }
 
 function progressPercent(raised: string, goal: string): number {
@@ -212,6 +306,7 @@ export default function CampaignDetailScreen({
   const [state, dispatch] = useReducer(reducer, { status: "loading" });
   const wsRef             = useRef<WebSocket | null>(null);
   const treeAnim          = useRef(new Animated.Value(1)).current;
+  const seenMilestonesRef = useRef<Set<string>>(new Set());
 
   // Pulse animation triggered on each tree_planted event
   const pulsTree = useCallback(() => {
@@ -220,6 +315,17 @@ export default function CampaignDetailScreen({
       Animated.timing(treeAnim, { toValue: 1,    duration: 180, useNativeDriver: true }),
     ]).start();
   }, [treeAnim]);
+
+  // ── Register for push notifications ────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    registerForPushNotifications(apiBaseUrl, campaignId).then((token) => {
+      if (cancelled) return;
+      // Token is registered server-side; nothing else to do here.
+      void token;
+    });
+    return () => { cancelled = true; };
+  }, [apiBaseUrl, campaignId]);
 
   // ── Fetch initial campaign data ────────────────────────────────────────────
   useEffect(() => {
@@ -277,6 +383,16 @@ export default function CampaignDetailScreen({
             dispatch({ type: "NEW_SPONSOR", sponsor: message.payload as Sponsor });
           }
           break;
+        case "milestone": {
+          const milestone = message.payload as CampaignMilestone | undefined;
+          if (!milestone || typeof milestone.type !== "string") break;
+          const key = `${milestone.type}:${milestone.value ?? ""}`;
+          if (seenMilestonesRef.current.has(key)) break;
+          seenMilestonesRef.current.add(key);
+          dispatch({ type: "MILESTONE", milestone });
+          presentMilestoneNotification(milestone);
+          break;
+        }
         case "ping":
           if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "pong" }));
           break;
