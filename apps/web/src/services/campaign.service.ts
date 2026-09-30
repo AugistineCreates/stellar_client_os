@@ -4,6 +4,7 @@ import { EmailService, type SendEmailOptions } from "./email.service";
 import { CampaignWebhookService } from "./campaign-webhook.service";
 import { pushNotificationService } from "./push-notification.service";
 import type { CampaignWebhookEvent } from "@/types/webhook";
+import type { CampaignLocalizedContent } from "@/lib/translation";
 
 export type CampaignStatus = "DRAFT" | "PENDING_VERIFICATION" | "ACTIVE" | "PAUSED" | "COMPLETED" | "FAILED";
 
@@ -139,6 +140,8 @@ export interface CampaignRecord {
   language?: string;
   /** Machine translations of the description keyed by ISO 639-1 language code. */
   translations?: Record<string, string>;
+  /** Explicitly reviewed campaign copy, keyed by ISO 639-1 language code. */
+  localizedContent?: Record<string, CampaignLocalizedContent>;
   /** Geographic location of the campaign, used for duplicate detection. */
   location?: string;
   /** Array of country codes or names the campaign spans, for geographic diversity. */
@@ -703,6 +706,7 @@ export async function createCampaign(input: {
   description?: string;
   language?: string;
   translations?: Record<string, string>;
+  localizedContent?: Record<string, CampaignLocalizedContent>;
   location?: string;
   countries?: string[];
   region?: string;
@@ -721,6 +725,7 @@ export async function createCampaign(input: {
     description: input.description,
     language: input.language ?? detectCampaignLanguage(input.description),
     translations: input.translations ?? {},
+    localizedContent: input.localizedContent ?? {},
     location: input.location,
     countries: input.countries,
     region: input.region,
