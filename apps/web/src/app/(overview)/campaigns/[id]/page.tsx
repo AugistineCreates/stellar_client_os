@@ -161,6 +161,18 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
     treesPlanted: "1,500",
   };
 
+  const sustainabilityScore = React.useMemo(
+    () =>
+      calculateSustainabilityScore({
+        treeType: campaign.treeType,
+        location: campaign.location,
+        treesPlanted: campaign.treesPlanted,
+        description: campaign.shortDescription,
+        category: campaign.category,
+      }),
+    [campaign.treeType, campaign.location, campaign.treesPlanted, campaign.shortDescription, campaign.category]
+  );
+
   // The mock detail page renders as the campaign creator, so creator-only
   // controls (featuring backers, managing community spaces) are exercised.
   // Replace with the connected wallet address once wallet state is wired here.
@@ -284,6 +296,11 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
               <Badge variant="outline" className="border-emerald-500 text-emerald-400 text-xs font-semibold">
                 <ShieldCheck className="mr-1 h-3 w-3" /> {campaign.status}
               </Badge>
+              <SustainabilityScoreBadge
+                score={sustainabilityScore.totalScore}
+                tier={sustainabilityScore.tier}
+                size="sm"
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
