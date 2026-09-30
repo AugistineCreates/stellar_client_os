@@ -4,84 +4,69 @@ interface CampaignCountdownProps {
   targetDate: string | Date;
 }
 
-interface TimeLeft {
-  days: number;
-  hours: number;
-  minutes: number;
-  seconds: number;
-}
-
 export const CampaignCountdown: React.FC<CampaignCountdownProps> = ({ targetDate }) => {
-  const [timeLeft, setTimeLeft] = useState<TimeLeft | null>(null);
-  const [isExpired, setIsExpired] = useState(false);
+  const [timeLeft, setTimeLeft] = useState({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+    isExpired: false,
+  });
 
   useEffect(() => {
-    const targetTime = new Date(targetDate).getTime();
-
     const calculateTimeLeft = () => {
-      const now = new Date().getTime();
-      const difference = targetTime - now;
+      const difference = new Date(targetDate).getTime() - new Date().getTime();
 
       if (difference <= 0) {
-        setIsExpired(true);
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-        return;
+        return { days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: true };
       }
 
-      setTimeLeft({
+      return {
         days: Math.floor(difference / (1000 * 60 * 60 * 24)),
         hours: Math.floor((difference / (1000 * 60 * 60)) % 24),
         minutes: Math.floor((difference / 1000 / 60) % 60),
         seconds: Math.floor((difference / 1000) % 60),
-      });
+        isExpired: false,
+      };
     };
 
-    calculateTimeLeft(); // Initial calculation
-
-    const timer = setInterval(calculateTimeLeft, 1000);
+    setTimeLeft(calculateTimeLeft());
+    const timer = setInterval(() => {
+      setTimeLeft(calculateTimeLeft());
+    }, 1000);
 
     return () => clearInterval(timer);
   }, [targetDate]);
 
-  if (!timeLeft) {
-    return null; // Or a loading state
-  }
-
-  if (isExpired) {
+  if (timeLeft.isExpired) {
     return (
-      <div className="p-4 bg-gray-100 border border-gray-300 rounded-md text-center">
-        <h3 className="text-xl font-bold text-gray-500">Campaign Ended</h3>
-        <p className="text-gray-400">This campaign is no longer active.</p>
+      <div className="font-bold text-gray-500 bg-gray-100 p-4 rounded-md text-center">
+        Campaign Ended
       </div>
     );
   }
 
-  const isUrgent = timeLeft.days === 0; // Less than 24 hours
+  const isUrgent = timeLeft.days === 0 && timeLeft.hours < 24;
 
   return (
-    <div className={`p-4 rounded-md text-center ${isUrgent ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
-      <h3 className={`text-lg mb-2 ${isUrgent ? 'text-red-600 font-bold' : 'text-blue-800'}`}>
-        {isUrgent ? 'Campaign Ending Soon!' : 'Campaign Ends In:'}
-      </h3>
-      <div className={`flex justify-center gap-4 text-2xl font-mono ${isUrgent ? 'text-red-700' : 'text-blue-900'}`}>
-        <div className="flex flex-col items-center">
+    <div className={`p-4 rounded-md text-center ${isUrgent ? 'text-red-600 font-bold bg-red-50' : 'text-gray-800 bg-blue-50'}`}>
+      <div className="text-sm uppercase tracking-wide mb-1">Time Remaining</div>
+      <div className="flex justify-center gap-4 text-2xl">
+        <div>
           <span>{timeLeft.days}</span>
-          <span className="text-xs uppercase tracking-wider">Days</span>
+          <span className="text-xs block text-gray-500">Days</span>
         </div>
-        <span>:</span>
-        <div className="flex flex-col items-center">
+        <div>
           <span>{timeLeft.hours.toString().padStart(2, '0')}</span>
-          <span className="text-xs uppercase tracking-wider">Hours</span>
+          <span className="text-xs block text-gray-500">Hours</span>
         </div>
-        <span>:</span>
-        <div className="flex flex-col items-center">
+        <div>
           <span>{timeLeft.minutes.toString().padStart(2, '0')}</span>
-          <span className="text-xs uppercase tracking-wider">Mins</span>
+          <span className="text-xs block text-gray-500">Mins</span>
         </div>
-        <span>:</span>
-        <div className="flex flex-col items-center">
+        <div>
           <span>{timeLeft.seconds.toString().padStart(2, '0')}</span>
-          <span className="text-xs uppercase tracking-wider">Secs</span>
+          <span className="text-xs block text-gray-500">Secs</span>
         </div>
       </div>
     </div>

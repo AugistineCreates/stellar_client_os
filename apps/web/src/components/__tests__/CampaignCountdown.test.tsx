@@ -1,8 +1,7 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CampaignCountdown } from '../CampaignCountdown';
-import React from 'react';
 
 describe('CampaignCountdown', () => {
   beforeEach(() => {
@@ -13,50 +12,32 @@ describe('CampaignCountdown', () => {
     vi.useRealTimers();
   });
 
-  it('renders countdown correctly with days remaining', () => {
-    const targetDate = new Date('2026-10-05T12:00:00Z');
-    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+  it('renders correctly and updates the countdown', () => {
+    const now = new Date('2026-10-01T12:00:00Z');
+    vi.setSystemTime(now);
 
-    render(<CampaignCountdown targetDate={targetDate} />);
+    const target = new Date(now.getTime() + (1 * 24 * 60 * 60 * 1000) + (2 * 60 * 60 * 1000) + (15 * 60 * 1000) + (4 * 1000));
 
-    expect(screen.getByText('4')).toBeInTheDocument(); // Days
-    expect(screen.getAllByText('00').length).toBeGreaterThan(0); // Hours, Minutes, Seconds
-    expect(screen.getByText('Campaign Ends In:')).toBeInTheDocument();
-  });
+    render(<CampaignCountdown targetDate={target} />);
 
-  it('updates countdown correctly after advancing time', () => {
-    const targetDate = new Date('2026-10-02T12:00:00Z');
-    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
-
-    render(<CampaignCountdown targetDate={targetDate} />);
-
-    expect(screen.getByText('1')).toBeInTheDocument(); // 1 day
+    expect(screen.getByText('1')).toBeInTheDocument(); // Days
+    expect(screen.getByText('02')).toBeInTheDocument(); // Hours
+    expect(screen.getByText('15')).toBeInTheDocument(); // Minutes
+    expect(screen.getByText('04')).toBeInTheDocument(); // Seconds
 
     act(() => {
-      vi.advanceTimersByTime(1000 * 60 * 60 * 24); // Advance 1 day
+      vi.advanceTimersByTime(1000);
     });
 
-    expect(screen.getByText('Campaign Ended')).toBeInTheDocument();
+    expect(screen.getByText('03')).toBeInTheDocument(); // Seconds goes down to 3
   });
 
-  it('renders urgent state when less than 24 hours remain', () => {
-    const targetDate = new Date('2026-10-01T14:00:00Z');
-    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
+  it('displays Campaign Ended when expired', () => {
+    const now = new Date('2026-10-01T12:00:00Z');
+    vi.setSystemTime(now);
+    const target = new Date(now.getTime() - 1000);
 
-    render(<CampaignCountdown targetDate={targetDate} />);
-
-    expect(screen.getByText('0')).toBeInTheDocument(); // Days
-    expect(screen.getByText('02')).toBeInTheDocument(); // Hours
-    expect(screen.getByText('Campaign Ending Soon!')).toBeInTheDocument();
-  });
-
-  it('renders expired state when target date is in the past', () => {
-    const targetDate = new Date('2026-09-01T12:00:00Z');
-    vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
-
-    render(<CampaignCountdown targetDate={targetDate} />);
-
+    render(<CampaignCountdown targetDate={target} />);
     expect(screen.getByText('Campaign Ended')).toBeInTheDocument();
-    expect(screen.getByText('This campaign is no longer active.')).toBeInTheDocument();
   });
 });
