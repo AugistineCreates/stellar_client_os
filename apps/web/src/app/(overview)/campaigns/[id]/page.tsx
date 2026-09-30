@@ -443,6 +443,13 @@ export default function CampaignDetailPage({ params }: { params: Promise<{ id: s
                 </div>
               </div>
 
+              {/* Issue #907: real-time CO2 sequestration display, updates as sponsors contribute. */}
+              <CampaignImpactCalculator
+                campaignSpeciesId={campaign.treeType}
+                campaignTreeCount={Number(campaign.treesPlanted.replace(/,/g, ""))}
+                readOnly
+              />
+
               <VerificationMediaGallery items={verificationMedia} />
 
               <CO2SequestrationProjection
