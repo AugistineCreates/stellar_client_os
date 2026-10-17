@@ -1,4 +1,4 @@
-﻿import { notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Heart, Leaf } from "lucide-react";
 import CampaignShareButtons from "@/components/campaign/CampaignShareButtons";
@@ -6,6 +6,7 @@ import { getCampaign } from "@/services/campaign.service";
 import { VerificationEvidenceGallery } from "@/components/campaign/VerificationEvidenceGallery";
 import { CampaignImpactCalculator } from "@/components/modules/impact/CampaignImpactCalculator";
 import { CampaignDonationPanel } from "@/components/modules/campaign/donation/CampaignDonationPanel";
+import { BackerExclusiveContent } from "@/components/modules/campaign/exclusive-content/BackerExclusiveContent";
 
 export const runtime = "nodejs";
 
@@ -87,6 +88,13 @@ export default async function CampaignPage({
           campaignName={campaign.name}
         />
       </section>
+
+      {/* Backer-Only Exclusive Content (#1267) */}
+      <BackerExclusiveContent
+        campaignId={campaign.id}
+        campaignTitle={campaign.name}
+        creatorAddress={campaign.creator}
+      />
 
       <VerificationEvidenceGallery evidence={campaign.verificationEvidence ?? []} />
     </main>
