@@ -120,3 +120,10 @@ export {
   campaignNFTRewardService,
   NFTRewardTierError,
 } from './campaign-nft-reward.service';
+export {
+  BackerNotificationService,
+  backerNotificationService,
+  getBackerNotificationDataSource,
+  setBackerNotificationDataSource,
+  InMemoryBackerNotificationPreferencesDataSource,
+} from './backer-notification.service';
