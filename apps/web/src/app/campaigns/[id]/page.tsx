@@ -12,6 +12,7 @@ import { CreatorSurveyResultsDashboard } from "@/components/modules/campaign/sur
 import { StaffPickBadge } from "@/components/modules/campaign/StaffPickBadge";
 
 import { CampaignComplianceDocumentsList } from "@/components/modules/campaign/compliance/CampaignComplianceDocumentsList";
+import { NFTRewardTiersSection } from "@/components/modules/campaign/reward-nft/NFTRewardTiersSection";
 import { RelatedCampaignsShelf } from "@/components/campaign/RelatedCampaignsShelf";
 
 export const runtime = "nodejs";
@@ -105,6 +106,16 @@ export default async function CampaignPage({
           campaignId={campaign.id}
           creatorAddress={campaign.creatorAddress}
           campaignCloseDate={campaign.deadline}
+        />
+      </section>
+
+      {/* Stellar-Native NFT Reward Tiers & Post-Campaign Airdrops */}
+      <section className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
+        <NFTRewardTiersSection
+          campaignId={campaign.id}
+          creatorAddress={campaign.creatorAddress}
+          campaignStatus={campaign.status}
+          isClosed={campaign.status === "COMPLETED" || (campaign.deadline ? Date.now() >= campaign.deadline : false)}
         />
       </section>
 

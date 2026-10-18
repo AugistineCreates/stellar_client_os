@@ -9,6 +9,7 @@ import {
 import { CampaignWebhookService } from "./campaign-webhook.service";
 import { pushNotificationService } from "./push-notification.service";
 import { campaignImpactNftService } from "./campaign-impact-nft.service";
+import { campaignNFTRewardService } from "./campaign-nft-reward.service";
 import type { CampaignWebhookEvent } from "@/types/webhook";
 import type { CampaignLocalizedContent } from "@/lib/translation";
 
@@ -1063,6 +1064,10 @@ export async function transitionCampaignStatus(
 
     void campaignImpactNftService.mintCampaignCompletionNFT(campaign.id, { dataSource }).catch((error) => {
       console.error(`[Impact NFT] Failed to auto-mint completion NFT for ${campaign.id}:`, error);
+    });
+
+    void campaignNFTRewardService.processCampaignCloseAirdrops(campaign.id, { dataSource, now }).catch((error) => {
+      console.error(`[NFT Rewards] Failed to process airdrops for ${campaign.id}:`, error);
     });
   }
 
