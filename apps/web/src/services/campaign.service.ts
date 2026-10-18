@@ -239,6 +239,12 @@ export interface CampaignRecord {
   featured?: boolean;
   /** Timestamp when the campaign was featured as a success story. */
   featuredAt?: number;
+  /** Whether this campaign is curated by the platform editorial team as a Staff Pick. */
+  isStaffPick?: boolean;
+  /** Editorial note or reason why the campaign was curated as a Staff Pick. */
+  staffPickReason?: string;
+  /** Timestamp when the campaign was designated as a Staff Pick. */
+  staffPickedAt?: number;
   insuranceClaim?: CampaignInsuranceClaim;
   /** Time-limited stretch goals that unlock special backer rewards. */
   stretchGoals?: import("./campaign-stretch-goals.service").StretchGoal[];
@@ -307,6 +313,7 @@ export interface CampaignFilter {
   maxGoalAmount?: string;
   createdAfter?: number;
   createdBefore?: number;
+  isStaffPick?: boolean;
 }
 
 export interface CampaignQueryInput {
@@ -989,6 +996,7 @@ export async function queryCampaigns(input: CampaignQueryInput = {}, dataSource 
     if (filter.createdBefore !== undefined && campaign.createdAt > filter.createdBefore) return false;
     if (filter.minGoalAmount && BigInt(campaign.goalAmount) < BigInt(filter.minGoalAmount)) return false;
     if (filter.maxGoalAmount && BigInt(campaign.goalAmount) > BigInt(filter.maxGoalAmount)) return false;
+    if (filter.isStaffPick !== undefined && Boolean(campaign.isStaffPick) !== filter.isStaffPick) return false;
     if (filter.search) {
       const haystack = `${campaign.id} ${campaign.name} ${campaign.description ?? ""} ${campaign.creator} ${campaign.language ?? ""} ${campaign.translations ? Object.values(campaign.translations).join(" ") : ""}`.toLowerCase();
       if (!haystack.includes(filter.search.toLowerCase())) return false;
