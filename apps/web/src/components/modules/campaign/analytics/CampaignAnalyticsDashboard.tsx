@@ -19,6 +19,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { CampaignFundingVelocityChart } from "../FundingVelocityChart";
 
 export interface CampaignAnalyticsDashboardProps {
   campaignId: string;
@@ -33,6 +34,7 @@ interface DashboardPayload {
   demographics: Array<{ region: string; backers: number; totalAmount: string; share: number }>;
   rewardTiers: Array<{ tierId: string; name: string; price: string; backers: number; revenue: string; share: number }>;
   dailyTrend: Array<{ date: string; amount: string; contributions: number; cumulative: string }>;
+  hourlyTrend?: Array<{ hour: string; amount: string; contributions: number; cumulative: string }>;
   totals: { visitors: number; contributions: number; totalFunded: string; conversionRate: number };
   speciesDiversity: { speciesCount: number; diversityScore: number; species: string[] };
 }
@@ -47,6 +49,7 @@ const EMPTY: DashboardPayload = {
   demographics: [],
   rewardTiers: [],
   dailyTrend: [],
+  hourlyTrend: [],
   totals: { visitors: 0, contributions: 0, totalFunded: "0", conversionRate: 0 },
   speciesDiversity: { speciesCount: 0, diversityScore: 0, species: [] },
 };
@@ -208,6 +211,30 @@ export function CampaignAnalyticsDashboard({
               </div>
             </MetricPanel>
           </div>
+
+          {/* Campaign Funding Velocity Line Chart (Creator Analytics: Hourly Granularity) */}
+          <CampaignFundingVelocityChart
+            campaignId={campaignId}
+            isCreator={true}
+            variant="creator"
+            granularity="hourly"
+            allowGranularityToggle={true}
+            dailyData={dashboard.dailyTrend.map((point) => ({
+              label: point.date.slice(5),
+              date: point.date,
+              raised: Number(point.amount),
+              contributions: point.contributions,
+              cumulative: Number(point.cumulative),
+            }))}
+            hourlyData={dashboard.hourlyTrend?.map((point) => ({
+              label: point.hour.includes("T") ? point.hour.split("T")[1] : point.hour,
+              hour: point.hour,
+              raised: Number(point.amount),
+              contributions: point.contributions,
+              cumulative: Number(point.cumulative),
+            }))}
+            currency="XLM"
+          />
 
           {/* Daily funding trend */}
           <MetricPanel icon={<TrendingUp className="h-4 w-4 text-emerald-400" />} title="Daily Funding Trend">

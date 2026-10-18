@@ -9,6 +9,7 @@ import {
 import { CampaignWebhookService } from "./campaign-webhook.service";
 import { pushNotificationService } from "./push-notification.service";
 import { campaignImpactNftService } from "./campaign-impact-nft.service";
+import { campaignNFTRewardService } from "./campaign-nft-reward.service";
 import type { CampaignWebhookEvent } from "@/types/webhook";
 import type { CampaignLocalizedContent } from "@/lib/translation";
 
@@ -38,6 +39,17 @@ export interface SponsorRecord {
   amount: string;
   token: string;
   sponsoredAt: number;
+}
+
+export type CharityBadgeType = "TAX_EXEMPT" | "CHARITY_VERIFIED";
+
+/** Trust badge awarded to a campaign by a platform admin after reviewing charity documents. */
+export interface CampaignCharityBadge {
+  type: CharityBadgeType;
+  /** Public link to the supporting documentation (e.g. IRS determination letter). */
+  documentationUrl: string;
+  awardedBy: string;
+  awardedAt: number;
 }
 
 export interface CampaignNonprofitPartner {
@@ -178,6 +190,8 @@ export interface CampaignRecord {
   /** Optional broad geographic region for discovery filtering. */
   region?: string;
   /** Intended campaign duration in milliseconds, used for duplicate detection. */
+  /** Optional campaign category (e.g., Environmental & Reforestation). */
+  category?: string;
   durationMs?: number;
   status: CampaignStatus;
   goalAmount: string;
@@ -202,6 +216,8 @@ export interface CampaignRecord {
   sponsors: SponsorRecord[];
   /** Partner details are eligible for certificates only after independent verification. */
   nonprofitPartner?: CampaignNonprofitPartner;
+  /** Tax-Exempt / Charity Verified badge shown to backers; set only by a platform admin. */
+  charityBadge?: CampaignCharityBadge;
   statusHistory: StatusHistoryEntry[];
   creatorVerification?: CampaignVerificationSummary;
   verification?: CampaignVerificationSummary;
@@ -224,6 +240,12 @@ export interface CampaignRecord {
   featured?: boolean;
   /** Timestamp when the campaign was featured as a success story. */
   featuredAt?: number;
+  /** Whether this campaign is curated by the platform editorial team as a Staff Pick. */
+  isStaffPick?: boolean;
+  /** Editorial note or reason why the campaign was curated as a Staff Pick. */
+  staffPickReason?: string;
+  /** Timestamp when the campaign was designated as a Staff Pick. */
+  staffPickedAt?: number;
   insuranceClaim?: CampaignInsuranceClaim;
   /** Time-limited stretch goals that unlock special backer rewards. */
   stretchGoals?: import("./campaign-stretch-goals.service").StretchGoal[];
@@ -292,6 +314,7 @@ export interface CampaignFilter {
   maxGoalAmount?: string;
   createdAfter?: number;
   createdBefore?: number;
+  isStaffPick?: boolean;
 }
 
 export interface CampaignQueryInput {
@@ -776,6 +799,7 @@ export async function createCampaign(input: {
   location?: string;
   countries?: string[];
   speciesTags?: string[];
+  category?: string;
   region?: string;
   treeSpecies?: string;
 /** GPS coordinates of the campaign's planting site(s), stored for the global
@@ -819,6 +843,7 @@ export async function createCampaign(input: {
     location: input.location,
     countries: input.countries,
     speciesTags: input.speciesTags ?? [],
+    category: input.category,
     region: input.region,
     treeSpecies: input.treeSpecies,
 gpsLocations: input.gpsLocations,
@@ -972,6 +997,7 @@ export async function queryCampaigns(input: CampaignQueryInput = {}, dataSource 
     if (filter.createdBefore !== undefined && campaign.createdAt > filter.createdBefore) return false;
     if (filter.minGoalAmount && BigInt(campaign.goalAmount) < BigInt(filter.minGoalAmount)) return false;
     if (filter.maxGoalAmount && BigInt(campaign.goalAmount) > BigInt(filter.maxGoalAmount)) return false;
+    if (filter.isStaffPick !== undefined && Boolean(campaign.isStaffPick) !== filter.isStaffPick) return false;
     if (filter.search) {
       const haystack = `${campaign.id} ${campaign.name} ${campaign.description ?? ""} ${campaign.creator} ${campaign.language ?? ""} ${campaign.translations ? Object.values(campaign.translations).join(" ") : ""}`.toLowerCase();
       if (!haystack.includes(filter.search.toLowerCase())) return false;
@@ -1038,6 +1064,10 @@ export async function transitionCampaignStatus(
 
     void campaignImpactNftService.mintCampaignCompletionNFT(campaign.id, { dataSource }).catch((error) => {
       console.error(`[Impact NFT] Failed to auto-mint completion NFT for ${campaign.id}:`, error);
+    });
+
+    void campaignNFTRewardService.processCampaignCloseAirdrops(campaign.id, { dataSource, now }).catch((error) => {
+      console.error(`[NFT Rewards] Failed to process airdrops for ${campaign.id}:`, error);
     });
   }
 

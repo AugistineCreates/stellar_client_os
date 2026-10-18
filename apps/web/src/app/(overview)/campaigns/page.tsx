@@ -10,6 +10,9 @@ import SuccessStories from "@/components/modules/campaign/success-stories/Succes
 import { CampaignAccessibilityControls } from "@/components/modules/campaign/CampaignAccessibilityControls";
 import { CampaignSearchPanel } from "@/components/modules/campaign/CampaignSearchPanel";
 import { useCampaigns } from "@/hooks/use-campaigns";
+import { CharityBadge } from "@/components/modules/campaign/CharityBadge";
+import { StaffPickBadge } from "@/components/modules/campaign/StaffPickBadge";
+import { StaffPicksSection } from "@/components/modules/campaign/StaffPicksSection";
 import { useCampaignWishlist } from "@/hooks/use-campaign-wishlist";
 import {
   DISCOVERY_REGIONS,
@@ -113,6 +116,12 @@ const { campaigns } = useCampaigns();
             </Button>
           </Link>
 
+          <Link href="/campaigns/social-scheduler">
+            <Button variant="outline" className="border-sky-800 bg-sky-950/40 text-sky-300 hover:bg-sky-900/60 font-semibold text-xs">
+              <Megaphone className="mr-1.5 h-3.5 w-3.5" /> Social Scheduler (#1266)
+            </Button>
+          </Link>
+
           <Link href="/grants">
             <Button variant="outline" className="border-amber-800 bg-amber-950/40 text-amber-300 hover:bg-amber-950/60 font-semibold shadow-lg text-xs">
               <Trophy className="mr-1.5 h-3.5 w-3.5" /> Grant Programs
@@ -133,6 +142,9 @@ const { campaigns } = useCampaigns();
         </div>
       </div>
       </div>
+
+      {/* Staff Picks Section curated by editorial team */}
+      <StaffPicksSection />
 
       {/* Success Stories Section */}
       <SuccessStories />
@@ -245,9 +257,12 @@ const { campaigns } = useCampaigns();
 
                           <div className="space-y-3">
                             <div className="flex items-center justify-between pr-10">
-                              <Badge className="bg-purple-950/60 text-purple-300 border-purple-800 text-[11px]">
-                                {c.category}
-                              </Badge>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <Badge className="bg-purple-950/60 text-purple-300 border-purple-800 text-[11px]">
+                                  {c.category}
+                                </Badge>
+                                {c.isStaffPick && <StaffPickBadge reason={c.staffPickReason} size="sm" />}
+                              </div>
                               <Badge variant="outline" className="border-emerald-500/40 text-emerald-400 text-[10px] whitespace-nowrap ml-2">
                                 <ShieldCheck className="mr-1 h-3 w-3 inline" /> {c.status}
                               </Badge>
@@ -256,6 +271,7 @@ const { campaigns } = useCampaigns();
                             <h3 className="text-xl font-bold text-zinc-100 group-hover:text-purple-300 transition-colors">
                               {c.title}
                             </h3>
+                            <CharityBadge badge={c.charityBadge} />
                             <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">{c.description}</p>
                           </div>
 
